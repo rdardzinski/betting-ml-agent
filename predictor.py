@@ -1,23 +1,18 @@
 import pickle
-import numpy as np
 
-def load_agent():
-    with open("agent_state.pkl", "rb") as f:
-        return pickle.load(f)
+def load_model():
+    with open("agent_state.pkl","rb") as f:
+        state = pickle.load(f)
+    return state["model"], state["accuracy"]
 
-def predict_matches(matches_df):
-    agent = load_agent()
-    model = agent["model"]
+def predict(df):
+    model, accuracy = load_model()
 
-    # placeholder features (docelowo: xG, form, rolling stats)
-    matches_df["FTHG"] = 1
-    matches_df["FTAG"] = 1
+    features = df[["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals"]]
+    probs = model.predict_proba(features)[:,1]
 
-    probs = model.predict_proba(
-        matches_df[["FTHG","FTAG"]]
-    )[:,1]
-
-    matches_df["Over25_Prob"] = probs
-    matches_df["ValueFlag"] = probs > 0.55
-
-    return matches_df
+    df["Over25_Prob"] = probs
+    df["Confidence"] = (probs*100).round(1)
+    df["ValueFlag"] = probs > 0.55
+    df["ModelAccuracy"] = accuracy
+    return df
