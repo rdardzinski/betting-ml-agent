@@ -4,10 +4,24 @@ from predictor import predict
 import pandas as pd
 import os
 import json
+import itertools
+
+def generate_coupons(df, num_coupons=20, picks_per_coupon=4):
+    coupons = []
+    df_value = df.copy()
+    df_value = df_value.sort_values("Over25_ValueFlag", ascending=False)
+    top_matches = df_value.head(num_coupons * picks_per_coupon)
+    matches_list = list(top_matches.index)
+    # prosty generator kuponów: 3 z 4
+    for i in range(num_coupons):
+        selected = matches_list[i*picks_per_coupon:(i+1)*picks_per_coupon]
+        # 3 z 4
+        for combo in itertools.combinations(selected, picks_per_coupon-1):
+            coupons.append(list(combo))
+    return coupons
 
 def run():
     matches = get_next_matches()
-
     if matches.empty:
         print("No matches found")
         return
@@ -19,15 +33,20 @@ def run():
     predictions.to_csv(temp_file,index=False)
     os.replace(temp_file,"predictions.csv")
 
+    # generowanie kuponów
+    coupons = generate_coupons(predictions)
+    with open("coupons.json","w") as f:
+        json.dump(coupons,f)
+
     # update metrics log
     metrics = {
         "num_predictions": len(predictions),
-        "value_bets": predictions["ValueFlag"].sum()
+        "value_bets": predictions["Over25_ValueFlag"].sum() + predictions["BTTS_ValueFlag"].sum()
     }
     with open("predictions_log.json","w") as f:
         json.dump(metrics,f)
 
-    print("Predictions saved.")
+    print("Predictions and coupons saved.")
 
 if __name__ == "__main__":
     run()
