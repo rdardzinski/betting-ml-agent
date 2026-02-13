@@ -1,0 +1,33 @@
+name: Run Betting Agent
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+    - cron: "0 8 * * 4"
+  workflow_dispatch:
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run agent
+        run: python agent.py
+
+      - name: Commit predictions
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add predictions.csv
+          git commit -m "Auto update predictions" || echo "No changes"
+          git push
