@@ -14,26 +14,30 @@ if not os.path.exists("predictions.csv"):
 df = pd.read_csv("predictions.csv")
 
 # ======== Wczytanie kuponów i mapowanie na nazwy drużyn ========
+coupons = []
 if os.path.exists("coupons.json"):
     with open("coupons.json","r") as f:
         coupons_raw = json.load(f)
-    # mapowanie indeksów na nazwy meczów
-    coupons = []
     for coupon in coupons_raw:
-        matches = [f"{df.loc[i,'HomeTeam']} vs {df.loc[i,'AwayTeam']}" for i in coupon]
-        coupons.append(matches)
-else:
-    coupons = []
+        matches_list = []
+        for i in coupon:
+            try:
+                match_str = f"{df.loc[i,'HomeTeam']} vs {df.loc[i,'AwayTeam']}"
+            except KeyError:
+                match_str = f"Match index {i}"
+            matches_list.append(match_str)
+        coupons.append(matches_list)
 
 # ======== Tabs ========
 tab1, tab2, tab3 = st.tabs(["🎯 Predykcje","📘 Legenda","💰 Kupony"])
 
 with tab1:
     st.subheader("Nadchodzące mecze – Multi-market")
-    # kolumny do pokazania
     display_cols = ["League","HomeTeam","AwayTeam","Date",
                     "Over25_Prob","Over25_Confidence","Over25_ValueFlag","Over25_ModelAccuracy",
                     "BTTS_Prob","BTTS_Confidence","BTTS_ValueFlag","BTTS_ModelAccuracy"]
+    # filtracja kolumn, które faktycznie istnieją
+    display_cols = [col for col in display_cols if col in df.columns]
     st.dataframe(df[display_cols], use_container_width=True)
 
     # Podsumowanie z JSON log
