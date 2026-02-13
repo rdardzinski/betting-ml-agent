@@ -1,18 +1,33 @@
 import requests
 import pandas as pd
 
-def get_next_matches(league_id):
-    url = f"https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id={league_id}"
-    r = requests.get(url)
-    data = r.json()
+LEAGUES = {
+    "EPL": 4328,
+    "Bundesliga": 4331,
+    "MLS": 4346
+}
 
-    matches = []
+def get_next_matches():
+    all_matches = []
 
-    for event in data["events"]:
-        matches.append({
-            "HomeTeam": event["strHomeTeam"],
-            "AwayTeam": event["strAwayTeam"],
-            "Date": event["dateEvent"]
-        })
+    for name, league_id in LEAGUES.items():
+        url = f"https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id={league_id}"
+        r = requests.get(url)
 
-    return pd.DataFrame(matches)
+        if r.status_code != 200:
+            continue
+
+        data = r.json()
+
+        if not data or not data.get("events"):
+            continue
+
+        for event in data["events"]:
+            all_matches.append({
+                "League": name,
+                "HomeTeam": event["strHomeTeam"],
+                "AwayTeam": event["strAwayTeam"],
+                "Date": event["dateEvent"]
+            })
+
+    return pd.DataFrame(all_matches)
