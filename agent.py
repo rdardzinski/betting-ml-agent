@@ -9,13 +9,13 @@ import itertools
 def generate_coupons(df, num_coupons=20, picks_per_coupon=4):
     coupons = []
     df_value = df.copy()
+    # prosty ranking według Over25_ValueFlag
     df_value = df_value.sort_values("Over25_ValueFlag", ascending=False)
     top_matches = df_value.head(num_coupons * picks_per_coupon)
     matches_list = list(top_matches.index)
-    # prosty generator kuponów: 3 z 4
+    # 3 z 4
     for i in range(num_coupons):
         selected = matches_list[i*picks_per_coupon:(i+1)*picks_per_coupon]
-        # 3 z 4
         for combo in itertools.combinations(selected, picks_per_coupon-1):
             coupons.append(list(combo))
     return coupons
