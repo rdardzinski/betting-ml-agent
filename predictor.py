@@ -1,7 +1,11 @@
+import os
 import pickle
 
 def load_model(market="Over25"):
-    with open(f"agent_state_{market}.pkl","rb") as f:
+    filename = f"agent_state_{market}.pkl"
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"{filename} nie istnieje. Uruchom najpierw notebook retrainingowy!")
+    with open(filename,"rb") as f:
         state = pickle.load(f)
     return state["model"], state["accuracy"]
 
