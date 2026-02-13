@@ -1,23 +1,33 @@
 from data_loader import get_next_matches
-from predictor import predict_matches
-
-LEAGUES = {
-    "EPL": 4328,
-    "Bundesliga": 4331,
-    "MLS": 4346
-}
-
-all_predictions = []
-
-for name, league_id in LEAGUES.items():
-    matches = get_next_matches(league_id)
-    predictions = predict_matches(matches)
-    predictions["League"] = name
-    all_predictions.append(predictions)
-
+from feature_engineering import build_features
+from predictor import predict
 import pandas as pd
-final_df = pd.concat(all_predictions)
+import os
+import json
 
-final_df.to_csv("predictions.csv", index=False)
+def run():
+    matches = get_next_matches()
 
-print("Predictions generated.")
+    if matches.empty:
+        print("No matches found")
+        return
+
+    matches = build_features(matches)
+    predictions = predict(matches)
+
+    temp_file = "predictions_temp.csv"
+    predictions.to_csv(temp_file,index=False)
+    os.replace(temp_file,"predictions.csv")
+
+    # update metrics log
+    metrics = {
+        "num_predictions": len(predictions),
+        "value_bets": predictions["ValueFlag"].sum()
+    }
+    with open("predictions_log.json","w") as f:
+        json.dump(metrics,f)
+
+    print("Predictions saved.")
+
+if __name__ == "__main__":
+    run()
