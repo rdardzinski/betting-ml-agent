@@ -54,9 +54,12 @@ def run():
 
     # 6️⃣ Aktualizacja logów
     metrics = {
-        "num_predictions": len(predictions),
-        "value_bets": predictions["Over25_ValueFlag"].sum() + predictions["BTTS_ValueFlag"].sum()
+        "num_predictions": int(len(predictions)),  # konwersja na int
+        "value_bets": int(predictions["Over25_ValueFlag"].sum() + predictions["BTTS_ValueFlag"].sum())
     }
+    # dodatkowo konwertujemy każdą wartość w słowniku na typ Python
+    metrics = {k: (int(v) if hasattr(v,'__int__') else float(v)) for k,v in metrics.items()}
+
     with open("predictions_log.json","w") as f:
         json.dump(metrics,f)
 
