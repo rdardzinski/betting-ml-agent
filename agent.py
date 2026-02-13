@@ -14,7 +14,7 @@ def generate_coupons(df, num_coupons=20, picks_per_coupon=4):
     df_value = df.copy()
 
     # Ranking: najpierw Over25, potem BTTS
-    df_value["Score"] = df_value["Over25_Prob"] + df_value["BTTS_Prob"]
+    df_value["Score"] = df_value.get("Over25_Prob",0) + df_value.get("BTTS_Prob",0)
     df_value = df_value.sort_values("Score", ascending=False)
 
     # Wybieramy top N meczów dla tworzenia kuponów
@@ -42,29 +42,34 @@ def run():
     # 3️⃣ Predykcje multi-market
     predictions = predict(matches)
 
-    # 4️⃣ Zapis predykcji
+    # 4️⃣ Zachowanie kolumn drużyn i ligi
+    for col in ["HomeTeam","AwayTeam","League","Date"]:
+        if col not in predictions.columns and col in matches.columns:
+            predictions[col] = matches[col]
+
+    # 5️⃣ Zapis do CSV
     temp_file = "predictions_temp.csv"
     predictions.to_csv(temp_file,index=False)
     os.replace(temp_file,"predictions.csv")
 
-    # 5️⃣ Generowanie kuponów
-    coupons = generate_coupons(predictions)
+    # 6️⃣ Generowanie kuponów
+    coupons_raw = generate_coupons(predictions)
     with open("coupons.json","w") as f:
-        json.dump(coupons,f)
+        json.dump(coupons_raw,f)
 
-    # 6️⃣ Aktualizacja logów
+    # 7️⃣ Aktualizacja logów
     metrics = {
-        "num_predictions": int(len(predictions)),  # konwersja na int
-        "value_bets": int(predictions["Over25_ValueFlag"].sum() + predictions["BTTS_ValueFlag"].sum())
+        "num_predictions": int(len(predictions)),
+        "value_bets": int(predictions.get("Over25_ValueFlag",0).sum() + predictions.get("BTTS_ValueFlag",0).sum())
     }
-    # dodatkowo konwertujemy każdą wartość w słowniku na typ Python
+    # konwersja do typów Python
     metrics = {k: (int(v) if hasattr(v,'__int__') else float(v)) for k,v in metrics.items()}
 
     with open("predictions_log.json","w") as f:
         json.dump(metrics,f)
 
     print("Predictions and coupons saved.")
-    print(f"Number of generated coupons: {len(coupons)}")
+    print(f"Number of generated coupons: {len(coupons_raw)}")
 
 if __name__ == "__main__":
     run()
