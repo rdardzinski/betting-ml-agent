@@ -2,56 +2,70 @@ import os
 import pickle
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
 
-MODELS_DIR = "models"
-
+# =========================
+# ŁADOWANIE MODELÓW
+# =========================
 def load_model(market="Over25"):
-    """Wczytuje model + metadane z dysku"""
-    filename = os.path.join(MODELS_DIR, f"model_{market}.pkl")
+    filename = f"models/agent_state_{market}.pkl"
     if not os.path.exists(filename):
-        raise FileNotFoundError(
-            f"{filename} nie istnieje. Uruchom najpierw notebook retrainingowy!"
-        )
+        print(f"[WARN] Model {market} not found, pomijam")
+        return None, None
+
     with open(filename, "rb") as f:
         state = pickle.load(f)
-    return state["model"], state["accuracy"], state["features"]
 
+    return state.get("model"), state.get("accuracy", 0.0)
 
-def predict(df: pd.DataFrame):
+# =========================
+# PREDYKCJE
+# =========================
+def predict(df):
     """
-    Multi-market prediction dla piłki nożnej
-    Zwraca df z kolumnami: *_Prob, *_Confidence, *_ValueFlag, *_ModelAccuracy
+    Przyjmuje dataframe meczów piłki nożnej i zwraca dataframe z kolumnami:
+    Over25_Prob, BTTS_Prob, 1HGoals_Prob, 2HGoals_Prob, Cards_Prob, Corners_Prob
     """
+
+    if df.empty:
+        return df, []
+
     predictions = df.copy()
-    markets = ["Over25", "BTTS", "1HGoals", "2HGoals", "Cards", "Corners"]
+    markets = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
+    available_markets = []
 
     for market in markets:
+        model, accuracy = load_model(market)
+        if model is None:
+            continue
+
+        # przygotowanie features – jeśli brak kolumn, uzupełnij zerami
+        features_cols = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals"]
+        for col in features_cols:
+            if col not in predictions.columns:
+                predictions[col] = 0
+
+        features = predictions[features_cols]
+
+        # bezpieczne predict_proba
         try:
-            model, accuracy, features = load_model(market)
-
-            # Sprawdź czy wszystkie feature'y są w df
-            missing = [f for f in features if f not in df.columns]
-            if missing:
-                print(f"[WARN] Market {market}: brakujące feature'y {missing}")
-                features = [f for f in features if f in df.columns]
-
-            X = df[features]
-
-            # predict_proba z obsługą jedynej klasy
-            probs_raw = model.predict_proba(X)
+            probs_raw = model.predict_proba(features)
             if probs_raw.shape[1] == 1:
-                probs = np.full((len(X),), probs_raw[0, 0])
+                # tylko jedna klasa w treningu
+                probs = np.full((len(features),), probs_raw[0,0])
             else:
-                probs = probs_raw[:, 1]
+                probs = probs_raw[:,1]
 
-            predictions[f"{market}_Prob"] = probs
-            predictions[f"{market}_Confidence"] = (probs * 100).round(1)
-            predictions[f"{market}_ValueFlag"] = probs > 0.55
-            predictions[f"{market}_ModelAccuracy"] = accuracy
-
-        except FileNotFoundError:
-            print(f"[WARN] Model {market} not found, pomijam")
         except Exception as e:
             print(f"[ERROR] Prediction failed for {market}: {e}")
+            probs = np.zeros(len(features))
 
-    return predictions, markets
+        # kolumny wynikowe
+        predictions[f"{market}_Prob"] = probs
+        predictions[f"{market}_Confidence"] = (probs*100).round(1)
+        predictions[f"{market}_ValueFlag"] = probs > 0.55
+        predictions[f"{market}_ModelAccuracy"] = accuracy
+
+        available_markets.append(market)
+
+    return predictions, available_markets
