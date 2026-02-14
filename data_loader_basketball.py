@@ -1,62 +1,26 @@
+import requests
 import pandas as pd
 
-# =========================
-# NBA (FREE)
-# =========================
-
-def load_nba():
-    url = "https://raw.githubusercontent.com/bttmly/nba/master/data/games.csv"
-    df = pd.read_csv(url)
-
-    df = df[["date","home_team","visitor_team","home_points","visitor_points"]]
-    df.columns = ["Date","HomeTeam","AwayTeam","HomeScore","AwayScore"]
-    df["League"] = "NBA"
-
-    return df
-
-
-# =========================
-# EUROPA + MIĘDZYNARODOWE
-# =========================
-
-def load_europe_international():
-    url = "https://raw.githubusercontent.com/sshleifer/nba_csv/master/international_games.csv"
-    df = pd.read_csv(url)
-
-    df = df.rename(columns={
-        "home":"HomeTeam",
-        "away":"AwayTeam",
-        "home_score":"HomeScore",
-        "away_score":"AwayScore",
-        "competition":"League"
-    })
-
-    df["Date"] = pd.to_datetime(df["date"], errors="coerce")
-
-    return df[["Date","HomeTeam","AwayTeam","HomeScore","AwayScore","League"]]
-
-
-# =========================
-# PUBLIC API
-# =========================
-
 def get_basketball_games():
-    frames = []
-
+    """
+    Pobiera ostatnie 100 meczów NBA z balldontlie.io
+    """
+    nba_data = []
+    url = "https://www.balldontlie.io/api/v1/games?per_page=100"
     try:
-        frames.append(load_nba())
-    except:
-        pass
-
-    try:
-        frames.append(load_europe_international())
-    except:
-        pass
-
-    if not frames:
-        return pd.DataFrame()
-
-    df = pd.concat(frames, ignore_index=True)
-    df = df.dropna(subset=["HomeTeam","AwayTeam"])
-
-    return df
+        resp = requests.get(url)
+        if resp.status_code == 200:
+            data = resp.json()["data"]
+            for g in data:
+                nba_data.append({
+                    "Date": g["date"][:10],
+                    "HomeTeam": g["home_team"]["full_name"],
+                    "AwayTeam": g["visitor_team"]["full_name"],
+                    "League": "NBA",
+                    "HomeScore": g["home_team_score"],
+                    "AwayScore": g["visitor_team_score"],
+                })
+        return pd.DataFrame(nba_data)
+    except Exception as e:
+        print(f"Błąd pobierania danych NBA: {e}")
+        return pd.DataFrame(columns=["Date","HomeTeam","AwayTeam","League","HomeScore","AwayScore"])
