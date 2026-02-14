@@ -1,37 +1,40 @@
-name: Run Betting Agent
+name: Train models & generate predictions
 
 on:
   schedule:
-    - cron: "0 8 * * 1"
-    - cron: "0 8 * * 4"
+    - cron: "0 8 * * 1,4"   # poniedziałek + czwartek
   workflow_dispatch:
 
 jobs:
-  run-agent:
+  train-and-run:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v3
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+    - uses: actions/checkout@v4
 
-      - name: Incremental retraining
-        run: |
-          python notebooks/notebook_training_incremental.ipynb
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
 
-      - name: Generate predictions + coupons
-        run: python agent.py
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
 
-      - name: Commit updates
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
-          git add predictions.csv predictions_log.json agent_state_Over25.pkl agent_state_BTTS.pkl coupons.json historical_data.csv
-          git commit -m "Auto retrain & update predictions + coupons" || echo "No changes"
-          git push
+    - name: Train models
+      run: |
+        python notebooks/run_training.py
+
+    - name: Run agent
+      run: |
+        python agent.py
+
+    - name: Commit outputs
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add models predictions.csv coupons.json league_ranking.json
+        git commit -m "Auto: retrain models & update predictions" || echo "No changes"
+        git push
