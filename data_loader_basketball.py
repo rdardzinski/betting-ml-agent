@@ -7,29 +7,17 @@ import aiohttp
 import time
 import os
 
-# =========================
-# CONSTANTS
-# =========================
-CUTOFF_DATE = datetime.today() - timedelta(days=180)  # ostatnie 6 miesięcy
-FALLBACK_CSV = "data/basketball_fallback.csv"
+CUTOFF_DATE = datetime.today() - timedelta(days=180)
 SAVE_INCREMENTAL = "data/basketball_incremental.csv"
+FALLBACK_CSV = "data/basketball_fallback.csv"
 
-# =========================
-# HELPER FUNCTIONS
-# =========================
 def _normalize_df(df, src):
-    """Normalizuje do wspólnego formatu agent"""
     df = df.copy()
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["League"] = df.get("League", src)
-    return df[
-        ["Date","HomeTeam","AwayTeam","League","HomeScore","AwayScore"]
-    ].dropna(subset=["HomeTeam","AwayTeam"])
+    return df[["Date","HomeTeam","AwayTeam","League","HomeScore","AwayScore"]].dropna(subset=["HomeTeam","AwayTeam"])
 
-# =========================
-# 1️⃣ Sportsflakes API (top EU leagues)
-# =========================
 def _load_sportsflakes():
     out = []
     endpoints = [
@@ -42,7 +30,7 @@ def _load_sportsflakes():
     for league,url in endpoints:
         try:
             r = requests.get(url, timeout=10)
-            time.sleep(0.5)  # delay dla regulaminu
+            time.sleep(0.5)
             if r.status_code == 200:
                 js = r.json()
                 for g in js.get("matches", []):
@@ -60,9 +48,6 @@ def _load_sportsflakes():
             print(f"[WARN][Sportsflakes] {league}: {e}")
     return pd.DataFrame(out)
 
-# =========================
-# 2️⃣ NBA GitHub CSV
-# =========================
 def _load_nba_github():
     try:
         url = "https://raw.githubusercontent.com/bttmly/nba/master/data/games.csv"
@@ -74,9 +59,6 @@ def _load_nba_github():
         print(f"[WARN][NBA GitHub CSV] {e}")
         return pd.DataFrame()
 
-# =========================
-# 3️⃣ Livesport scraper (async)
-# =========================
 async def _fetch_livesport_page(session, url):
     try:
         async with session.get(url) as resp:
@@ -115,7 +97,6 @@ async def _load_livesport_async():
     return df
 
 def _load_livesport():
-    """Wrapper sync dla asynchronicznego scraper"""
     start = time.time()
     try:
         loop = asyncio.new_event_loop()
@@ -127,9 +108,6 @@ def _load_livesport():
         print(f"[WARN][Livesport sync] {e}")
         return pd.DataFrame()
 
-# =========================
-# 4️⃣ Fallback CSV
-# =========================
 def _load_fallback_csv():
     if not os.path.exists(FALLBACK_CSV):
         return pd.DataFrame()
@@ -140,20 +118,7 @@ def _load_fallback_csv():
         print(f"[WARN][Fallback CSV] {e}")
         return pd.DataFrame()
 
-# =========================
-# PUBLIC FUNCTION
-# =========================
 def get_basketball_games():
-    """
-    Pobiera dane koszykarskie z kilku źródeł:
-    1) Sportsflakes API (EU top 5 lig + Euroliga)
-    2) NBA public CSV
-    3) Livesport HTML (async)
-    4) Fallback CSV lokalny
-    
-    Zwraca DataFrame z kolumnami:
-    Date, HomeTeam, AwayTeam, League, HomeScore, AwayScore
-    """
     sources = [
         ("Sportsflakes", _load_sportsflakes),
         ("NBA GitHub", _load_nba_github),
@@ -166,7 +131,6 @@ def get_basketball_games():
         if not df.empty:
             print(f"[INFO] {name} loaded {len(df)} matches")
             final_df = pd.concat([final_df, df], ignore_index=True)
-            # zapis przyrostowy
             df.to_csv(SAVE_INCREMENTAL, mode='a', index=False, header=not os.path.exists(SAVE_INCREMENTAL))
     if final_df.empty:
         print("[WARN] No basketball data found from any source")
