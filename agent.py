@@ -2,9 +2,7 @@ import os
 import json
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-
-# --- importy lokalne ---
+from datetime import datetime
 from data_loader import get_next_matches
 from feature_engineering import build_features
 from predictor import predict
@@ -31,7 +29,6 @@ def generate_coupons(df, n_coupons=5, picks=5):
 # GŁÓWNA LOGIKA AGENTA
 # =========================
 def run():
-    # --- PIŁKA NOŻNA ---
     print("[INFO] Loading football data...")
     football = get_next_matches()
     if football.empty:
@@ -41,17 +38,11 @@ def run():
     football = build_features(football)
 
     try:
+        # predykcja, predictor zwraca DataFrame z kolumnami wejściowymi zachowanymi
         football_pred, _ = predict(football)
     except Exception as e:
         print("[ERROR] Błąd predykcji football:", e)
         return
-
-    # Zachowanie nazw drużyn
-    for col in ["HomeTeam", "AwayTeam", "League", "Date"]:
-        if col in football.columns:
-            football_pred[col] = football[col]
-        else:
-            football_pred[col] = "Unknown"
 
     # Ustawienie ValueFlag dla wszystkich rynków
     markets = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
@@ -83,7 +74,7 @@ def run():
     from data_loader_basketball import get_basketball_games
     basketball = get_basketball_games()
     if not basketball.empty:
-        basketball['HomeWin_Prob'] = 0.55  # proxy
+        basketball['HomeWin_Prob'] = 0.55
         basketball['ValueScore'] = basketball['HomeWin_Prob']
         basketball['Sport'] = 'Basketball'
     else:
