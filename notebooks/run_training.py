@@ -1,111 +1,136 @@
-import sys
-import os
 import pandas as pd
 import numpy as np
-import pickle
-from sklearn.ensemble import RandomForestClassifier
+import joblib
+import os
 from datetime import datetime, timedelta
 
-# Dodaj katalog nadrzędny, by Python widział moduły
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
 
 from data_loader import get_next_matches
-from data_loader_basketball import get_basketball_games
 from feature_engineering import build_features
 
-# ================================
-# Katalog na modele
-# ================================
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
-if not os.path.exists(MODEL_DIR):
-    os.makedirs(MODEL_DIR)
+# =========================
+# KONFIGURACJA
+# =========================
 
-# ================================
-# Parametry
-# ================================
-CUTOFF_DATE = datetime.today() - timedelta(days=180)  # ostatnie 6 miesięcy
+MODELS_DIR = "models"
+os.makedirs(MODELS_DIR, exist_ok=True)
 
-FOOTBALL_MARKETS = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
-BASKETBALL_MARKETS = ["HomeWin","BasketPoints","BasketSum"]
+CUTOFF_DATE = datetime.now() - timedelta(days=180)
 
-# ================================
-# Funkcja do trenowania modelu
-# ================================
-def train_market(df, market):
+TARGETS = {
+    # klasyczne
+    "Over25": lambda df: (df["FTHG"] + df["FTAG"] > 2).astype(int),
+    "BTTS": lambda df: ((df["FTHG"] > 0) & (df["FTAG"] > 0)).astype(int),
+
+    # połowy
+    "1H_Over05": lambda df: (df["HTHG"] + df["HTAG"] > 0).astype(int),
+    "2H_Over15": lambda df: ((df["FTHG"] + df["FTAG"]) - (df["HTHG"] + df["HTAG"]) > 1).astype(int),
+
+    # drużynowe
+    "HomeScore": lambda df: (df["FTHG"] > 0).astype(int),
+    "AwayScore": lambda df: (df["FTAG"] > 0).astype(int),
+
+    # sumy
+    "Over15": lambda df: (df["FTHG"] + df["FTAG"] > 1).astype(int),
+    "Over35": lambda df: (df["FTHG"] + df["FTAG"] > 3).astype(int),
+}
+
+FEATURE_COLUMNS = [
+    "HomeRollingGoals",
+    "AwayRollingGoals",
+    "HomeRollingConceded",
+    "AwayRollingConceded",
+    "HomeForm",
+    "AwayForm"
+]
+
+# =========================
+# TRAINING
+# =========================
+
+def train_model(df, target_name, target_func):
+    print(f"[TRAIN] {target_name}")
+
     df = df.copy()
-    if df.empty:
-        return None, 0.5
+    df[target_name] = target_func(df)
 
-    # Piłka nożna
-    if market in FOOTBALL_MARKETS:
-        features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals","1HGoals","2HGoals","BTTS","Cards","Corners"]
-        for col in features:
-            if col not in df.columns:
-                df[col] = 0
-        X = df[features]
-        y = df[market] if market in df.columns else np.random.randint(0,2,len(df))
+    df = df.dropna(subset=FEATURE_COLUMNS + [target_name])
 
-    # Koszykówka
-    elif market in BASKETBALL_MARKETS:
-        for col in ["HomeScore","AwayScore"]:
-            if col not in df.columns:
-                df[col] = 0
-        X = df[["HomeScore","AwayScore"]]
-        y = df[market] if market in df.columns else np.random.randint(0,2,len(df))
+    X = df[FEATURE_COLUMNS]
+    y = df[target_name]
+
+    if len(X) < 200:
+        print(f"[SKIP] Not enough samples for {target_name}")
+        return None
+
+    split = int(len(X) * 0.8)
+    X_train, X_test = X.iloc[:split], X.iloc[split:]
+    y_train, y_test = y.iloc[:split], y.iloc[split:]
+
+    model_path = f"{MODELS_DIR}/{target_name}.joblib"
+
+    if os.path.exists(model_path):
+        model = joblib.load(model_path)
+        model.fit(X_train, y_train)
+        print(f"[INFO] Incremental retrain for {target_name}")
     else:
-        return None, 0.5
+        model = RandomForestClassifier(
+            n_estimators=300,
+            max_depth=10,
+            random_state=42,
+            n_jobs=-1
+        )
+        model.fit(X_train, y_train)
+        print(f"[INFO] New model trained for {target_name}")
 
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    try:
-        model.fit(X, y)
-        acc = model.score(X, y)
-    except Exception:
-        model.fit(np.zeros((1,X.shape[1])), [0])
-        acc = 0.5
-    return model, acc
+    preds = model.predict(X_test)
+    acc = accuracy_score(y_test, preds)
 
-# ================================
-# TRENING PIŁKI NOŻNEJ
-# ================================
-football = get_next_matches()
-football = football[football["Date"] >= CUTOFF_DATE] if "Date" in football.columns else pd.DataFrame()
+    joblib.dump(model, model_path)
+    print(f"[OK] {target_name} accuracy: {round(acc, 3)}")
 
-if not football.empty:
-    football = build_features(football)
-    for market in FOOTBALL_MARKETS:
-        model, acc = train_market(football, market)
-        fname = os.path.join(MODEL_DIR, f"agent_state_{market}.pkl")
-        with open(fname,"wb") as f:
-            pickle.dump({"model":model,"accuracy":acc}, f)
-        print(f"[INFO] Football model saved: {market} (acc={acc:.2f})")
-else:
-    print("[WARN] Brak meczów piłki nożnej do treningu")
+    return acc
 
-# ================================
-# TRENING KOSZYKÓWKI – fallbacki
-# ================================
-basketball_sources = [get_basketball_games]  # Możesz dodać inne źródła jako kolejne funkcje
-basketball = pd.DataFrame()
+# =========================
+# MAIN
+# =========================
 
-for src in basketball_sources:
-    df = src()
-    if not df.empty and "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df = df.dropna(subset=["HomeTeam","AwayTeam","Date"])
-        basketball = df
-        print(f"[INFO] Basketball data loaded from {src.__name__}")
-        break
+def main():
+    print("[INFO] Loading football data...")
+    df = get_next_matches()
 
-if basketball.empty:
-    print("[WARN] Brak danych koszykówki z żadnego źródła")
+    if df.empty:
+        raise RuntimeError("No football data loaded")
 
-if not basketball.empty:
-    basketball = basketball[basketball["Date"] >= CUTOFF_DATE]
-    for market in BASKETBALL_MARKETS:
-        model, acc = train_market(basketball, market)
-        fname = os.path.join(MODEL_DIR,f"agent_state_{market}.pkl")
-        with open(fname,"wb") as f:
-            pickle.dump({"model":model,"accuracy":acc},f)
-        print(f"[INFO] Basketball model saved: {market} (acc={acc:.2f})")
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df[df["Date"] >= CUTOFF_DATE]
 
-print("[INFO] Run_training finished successfully")
+    print(f"[INFO] Matches after cutoff: {len(df)}")
+
+    df = build_features(df)
+
+    results = {}
+
+    for target, func in TARGETS.items():
+        acc = train_model(df, target, func)
+        if acc:
+            results[target] = acc
+
+    print("\n====== TRAINING SUMMARY ======")
+    for k, v in results.items():
+        print(f"{k}: {round(v,3)}")
+
+    print("[SUCCESS] Training finished")
+
+    # -----------------------------
+    # 🏀 BASKETBALL – WYŁĄCZONE
+    # -----------------------------
+    """
+    from data_loader_basketball import get_basketball_games
+    basketball = get_basketball_games()
+    """
+
+if __name__ == "__main__":
+    main()
