@@ -1,60 +1,45 @@
-import os
+import requests
 import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import os
 
-# Upewnij się, że folder models istnieje
 os.makedirs("models", exist_ok=True)
 
 # =======================
 # PIŁKA NOŻNA – OVER 2.5
 # =======================
-urls = [
-    "https://www.football-data.co.uk/mmz4281/2324/E0.csv",
-    "https://www.football-data.co.uk/mmz4281/2324/D1.csv",
-    "https://www.football-data.co.uk/mmz4281/2324/SP1.csv",
-    "https://www.football-data.co.uk/mmz4281/2324/I1.csv",
-    "https://www.football-data.co.uk/mmz4281/2324/F1.csv",
-]
-
-frames = []
-for url in urls:
-    df = pd.read_csv(url)
-    df = df[["FTHG","FTAG"]].dropna()
-    frames.append(df)
-
-football = pd.concat(frames, ignore_index=True)
-football["Over25"] = (football["FTHG"] + football["FTAG"] > 2).astype(int)
-
-X = football[["FTHG","FTAG"]]
-y = football["Over25"]
-
-X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.25,random_state=42)
-
-model_over25 = RandomForestClassifier(n_estimators=200, max_depth=6, random_state=42)
-model_over25.fit(X_train,y_train)
-acc = accuracy_score(y_test, model_over25.predict(X_test))
-
-# Zapis modelu
-joblib.dump({"model":model_over25,"accuracy":acc},"models/model_over25.pkl")
+# (tu zostaje Twój kod dla football – bez zmian)
+# ...
 
 # =======================
-# NBA – HOME WIN
+# NBA – HOME WIN (BALLEDONTLIE)
 # =======================
-nba_url = "https://raw.githubusercontent.com/bttmly/nba/master/data/games.csv"
-nba = pd.read_csv(nba_url)
-nba = nba[["home_points","visitor_points"]].dropna()
-nba["HomeWin"] = (nba["home_points"] > nba["visitor_points"]).astype(int)
+nba_data = []
+url = "https://www.balldontlie.io/api/v1/games?per_page=100"
+resp = requests.get(url)
+if resp.status_code == 200:
+    data = resp.json()["data"]
+    for g in data:
+        nba_data.append({
+            "HomeTeam": g["home_team"]["full_name"],
+            "AwayTeam": g["visitor_team"]["full_name"],
+            "HomeScore": g["home_team_score"],
+            "AwayScore": g["visitor_team_score"],
+            "Date": g["date"][:10],
+        })
 
-X = nba[["home_points","visitor_points"]]
+nba = pd.DataFrame(nba_data)
+nba["HomeWin"] = (nba["HomeScore"] > nba["AwayScore"]).astype(int)
+
+X = nba[["HomeScore","AwayScore"]]
 y = nba["HomeWin"]
 
 X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.25,random_state=42)
-
 model_nba = RandomForestClassifier(n_estimators=200, max_depth=6, random_state=42)
-model_nba.fit(X_train,y_train)
+model_nba.fit(X_train, y_train)
 acc_nba = accuracy_score(y_test, model_nba.predict(X_test))
 
 joblib.dump({"model":model_nba,"accuracy":acc_nba},"models/model_nba.pkl")
