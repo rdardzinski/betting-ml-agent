@@ -14,6 +14,9 @@ MODEL_PATH = "models"
 RETENTION_MONTHS = 6
 MARKETS = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
 
+# Utwórz folder na modele jeśli nie istnieje
+os.makedirs(MODEL_PATH, exist_ok=True)
+
 # =========================
 # Załaduj dane piłki nożnej
 # =========================
@@ -24,6 +27,7 @@ football = get_next_matches()
 if football.empty:
     raise ValueError("[ERROR] No football matches loaded!")
 
+# Filtr na ostatnie RETENTION_MONTHS
 cutoff_date = datetime.now() - timedelta(days=30*RETENTION_MONTHS)
 football["Date"] = pd.to_datetime(football["Date"], errors="coerce")
 football = football[football["Date"] >= cutoff_date]
@@ -41,8 +45,9 @@ football = build_features(football)
 
 for market in MARKETS:
     if market not in football.columns:
-        # Tworzymy kolumnę binarną jako proxy
-        football[market] = 0
+        # Tworzymy kolumnę binarną jako proxy z dopasowaniem indeksu
+        football[market] = pd.Series(0, index=football.index)
+
     print(f"[TRAIN] {market}")
     try:
         train_and_save(football, market, model_path=MODEL_PATH)
