@@ -40,7 +40,8 @@ def predict(df):
             continue
 
         # przygotowanie features – jeśli brak kolumn, uzupełnij zerami
-        features_cols = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals"]
+        features_cols = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals",
+                         "1HGoals","2HGoals","BTTS","Cards","Corners"]
         for col in features_cols:
             if col not in predictions.columns:
                 predictions[col] = 0
