@@ -1,10 +1,11 @@
+import os
+import joblib
 import pandas as pd
 import numpy as np
-import joblib
-import os
 from datetime import datetime, timedelta
 
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
 from data_loader import get_next_matches
@@ -17,120 +18,107 @@ from feature_engineering import build_features
 MODELS_DIR = "models"
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-CUTOFF_DATE = datetime.now() - timedelta(days=180)
+CUTOFF_DATE = datetime.now() - timedelta(days=180)  # ostatnie 6 miesięcy
 
-TARGETS = {
-    # klasyczne
-    "Over25": lambda df: (df["FTHG"] + df["FTAG"] > 2).astype(int),
-    "BTTS": lambda df: ((df["FTHG"] > 0) & (df["FTAG"] > 0)).astype(int),
-
-    # połowy
-    "1H_Over05": lambda df: (df["HTHG"] + df["HTAG"] > 0).astype(int),
-    "2H_Over15": lambda df: ((df["FTHG"] + df["FTAG"]) - (df["HTHG"] + df["HTAG"]) > 1).astype(int),
-
-    # drużynowe
-    "HomeScore": lambda df: (df["FTHG"] > 0).astype(int),
-    "AwayScore": lambda df: (df["FTAG"] > 0).astype(int),
-
-    # sumy
-    "Over15": lambda df: (df["FTHG"] + df["FTAG"] > 1).astype(int),
-    "Over35": lambda df: (df["FTHG"] + df["FTAG"] > 3).astype(int),
+MARKETS = {
+    "Over25": {
+        "target": "Over25",
+    },
+    "BTTS": {
+        "target": "BTTS",
+    },
+    "1HGoals": {
+        "target": "Over05_1H",
+    },
+    "2HGoals": {
+        "target": "Over05_2H",
+    },
+    "Cards": {
+        "target": "Over35_Cards",
+    },
+    "Corners": {
+        "target": "Over85_Corners",
+    },
 }
 
-FEATURE_COLUMNS = [
+BASE_FEATURES = [
+    "FTHG",
+    "FTAG",
     "HomeRollingGoals",
     "AwayRollingGoals",
     "HomeRollingConceded",
     "AwayRollingConceded",
     "HomeForm",
-    "AwayForm"
+    "AwayForm",
 ]
 
 # =========================
-# TRAINING
+# LOAD + FEATURES
 # =========================
 
-def train_model(df, target_name, target_func):
-    print(f"[TRAIN] {target_name}")
+print("[INFO] Loading football data...")
+df = get_next_matches()
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+df = df[df["Date"] >= CUTOFF_DATE]
 
-    df = df.copy()
-    df[target_name] = target_func(df)
+print(f"[INFO] Matches after cutoff: {len(df)}")
 
-    df = df.dropna(subset=FEATURE_COLUMNS + [target_name])
-
-    X = df[FEATURE_COLUMNS]
-    y = df[target_name]
-
-    if len(X) < 200:
-        print(f"[SKIP] Not enough samples for {target_name}")
-        return None
-
-    split = int(len(X) * 0.8)
-    X_train, X_test = X.iloc[:split], X.iloc[split:]
-    y_train, y_test = y.iloc[:split], y.iloc[split:]
-
-    model_path = f"{MODELS_DIR}/{target_name}.joblib"
-
-    if os.path.exists(model_path):
-        model = joblib.load(model_path)
-        model.fit(X_train, y_train)
-        print(f"[INFO] Incremental retrain for {target_name}")
-    else:
-        model = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=10,
-            random_state=42,
-            n_jobs=-1
-        )
-        model.fit(X_train, y_train)
-        print(f"[INFO] New model trained for {target_name}")
-
-    preds = model.predict(X_test)
-    acc = accuracy_score(y_test, preds)
-
-    joblib.dump(model, model_path)
-    print(f"[OK] {target_name} accuracy: {round(acc, 3)}")
-
-    return acc
+df = build_features(df)
 
 # =========================
-# MAIN
+# TRENING
 # =========================
 
-def main():
-    print("[INFO] Loading football data...")
-    df = get_next_matches()
+for market, cfg in MARKETS.items():
+    print(f"[TRAIN] {market}")
 
-    if df.empty:
-        raise RuntimeError("No football data loaded")
+    target = cfg["target"]
 
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df[df["Date"] >= CUTOFF_DATE]
+    if target not in df.columns:
+        print(f"[WARN] Target {target} not found – skipping")
+        continue
 
-    print(f"[INFO] Matches after cutoff: {len(df)}")
+    # 👉 tylko istniejące feature’y
+    features = [f for f in BASE_FEATURES if f in df.columns]
 
-    df = build_features(df)
+    if len(features) < 2:
+        print(f"[WARN] Not enough features for {market}")
+        continue
 
-    results = {}
+    data = df[features + [target]].dropna()
 
-    for target, func in TARGETS.items():
-        acc = train_model(df, target, func)
-        if acc:
-            results[target] = acc
+    if len(data) < 100:
+        print(f"[WARN] Not enough rows for {market}")
+        continue
 
-    print("\n====== TRAINING SUMMARY ======")
-    for k, v in results.items():
-        print(f"{k}: {round(v,3)}")
+    X = data[features]
+    y = data[target]
 
-    print("[SUCCESS] Training finished")
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.25, random_state=42, stratify=y
+    )
 
-    # -----------------------------
-    # 🏀 BASKETBALL – WYŁĄCZONE
-    # -----------------------------
-    """
-    from data_loader_basketball import get_basketball_games
-    basketball = get_basketball_games()
-    """
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=8,
+        random_state=42,
+        n_jobs=-1,
+    )
 
-if __name__ == "__main__":
-    main()
+    model.fit(X_train, y_train)
+
+    acc = accuracy_score(y_test, model.predict(X_test))
+
+    joblib.dump(
+        {
+            "model": model,
+            "accuracy": acc,
+            "features": features,   # 🔥 KLUCZOWE
+            "trained_at": datetime.now(),
+        },
+        f"{MODELS_DIR}/model_{market}.pkl",
+    )
+
+    print(f"[INFO] Model saved: {market} (acc={acc:.2f})")
+
+print("[DONE] Training finished successfully")
