@@ -6,51 +6,54 @@ st.set_page_config(layout="wide")
 st.title("📊 Betting ML Agent – Football + Basketball")
 
 # =========================
-# LOAD DATA
+# LOAD
 # =========================
 try:
     df = pd.read_csv("predictions.csv")
     with open("coupons.json") as f:
         coupons = json.load(f)
 except Exception as e:
-    st.error(f"❌ Load error: {e}")
+    st.error(f"Load error: {e}")
     st.stop()
 
 if df.empty:
-    st.warning("Brak danych predykcyjnych.")
+    st.warning("Brak danych.")
     st.stop()
 
 # =========================
-# HELPERS
+# SAFE ACCESS
 # =========================
-def safe(row, col, default="—"):
-    return row[col] if col in row and pd.notna(row[col]) else default
+def col(name, default=None):
+    return df[name] if name in df.columns else default
+
+def val(row, key, default="—"):
+    return row[key] if key in row and pd.notna(row[key]) else default
 
 
 # =========================
-# SIDEBAR – FILTRY
+# SIDEBAR
 # =========================
 st.sidebar.header("🎛 Filtry")
 
-sports = ["All"] + sorted(df["Sport"].dropna().unique().tolist())
+sports = ["All"] + sorted(col("Sport", pd.Series()).dropna().unique().tolist())
 sport_filter = st.sidebar.selectbox("Sport", sports)
 
-leagues = ["All"] + sorted(df["League"].dropna().unique().tolist())
+leagues = ["All"] + sorted(col("League", pd.Series()).dropna().unique().tolist())
 league_filter = st.sidebar.selectbox("Liga", leagues)
 
 filtered = df.copy()
-if sport_filter != "All":
+if sport_filter != "All" and "Sport" in df.columns:
     filtered = filtered[filtered["Sport"] == sport_filter]
-if league_filter != "All":
+if league_filter != "All" and "League" in df.columns:
     filtered = filtered[filtered["League"] == league_filter]
 
 # =========================
 # TABS
 # =========================
-tab1, tab2, tab3 = st.tabs(["🎫 Kupony", "🔥 Top Value Bets", "🧾 Raw Data"])
+tab1, tab2, tab3 = st.tabs(["🎫 Kupony", "🔥 Value Bets", "🧾 Dane"])
 
 # =========================
-# TAB 1 – KUPONY
+# TAB 1
 # =========================
 with tab1:
     if not coupons:
@@ -63,46 +66,44 @@ with tab1:
                 for idx in coupons[i]:
                     if idx >= len(df):
                         continue
-                    row = df.iloc[idx]
+                    r = df.iloc[idx]
 
-                    home = safe(row, "HomeTeam")
-                    away = safe(row, "AwayTeam")
-                    league = safe(row, "League")
-                    date = safe(row, "Date")
+                    home = val(r, "HomeTeam")
+                    away = val(r, "AwayTeam")
+                    league = val(r, "League")
+                    date = val(r, "Date")
 
-                    if row["Sport"] == "Football":
-                        prob = float(row.get("Over25_Prob", 0))
+                    if val(r, "Sport") == "Football":
+                        prob = float(val(r, "Over25_Prob", 0))
                         st.markdown(
                             f"⚽ **{home} vs {away}**  \n"
                             f"Liga: `{league}` | Data: `{date}`  \n"
-                            f"Typ: Over 2.5 gola ({round(prob*100,1)}%)"
+                            f"Over 2.5 gola ({round(prob*100,1)}%)"
                         )
                     else:
-                        prob = float(row.get("HomeWin_Prob", 0))
+                        prob = float(val(r, "HomeWin_Prob", 0))
                         st.markdown(
                             f"🏀 **{home} vs {away}**  \n"
                             f"Rozgrywki: `{league}` | Data: `{date}`  \n"
-                            f"Typ: Zwycięstwo gospodarzy ({round(prob*100,1)}%)"
+                            f"Zwycięstwo gospodarzy ({round(prob*100,1)}%)"
                         )
 
-                st.markdown("---")
-
 # =========================
-# TAB 2 – TOP VALUE BETS
+# TAB 2
 # =========================
 with tab2:
     st.subheader("Top Value Bets")
-    top = filtered.sort_values("ValueScore", ascending=False).head(20)
-
-    st.dataframe(
-        top[[
-            "Sport","Date","League","HomeTeam","AwayTeam","ValueScore"
-        ]],
-        use_container_width=True
-    )
+    if "ValueScore" in filtered.columns:
+        st.dataframe(
+            filtered.sort_values("ValueScore", ascending=False)
+            .head(25),
+            use_container_width=True
+        )
+    else:
+        st.info("Brak ValueScore")
 
 # =========================
-# TAB 3 – RAW DATA
+# TAB 3
 # =========================
 with tab3:
     st.subheader("Raw predictions.csv")
