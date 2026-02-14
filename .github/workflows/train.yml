@@ -1,1 +1,27 @@
+name: Retrain Models
 
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # poniedziałek 03:00
+  workflow_dispatch:
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - run: pip install -r requirements.txt
+
+      - run: python notebooks/run_training.py
+
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add models/*.pkl
+          git commit -m "Auto retrain models" || echo "No changes"
+          git push
