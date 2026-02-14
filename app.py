@@ -5,44 +5,105 @@ import json
 st.set_page_config(layout="wide")
 st.title("📊 Betting ML Agent – Football + Basketball")
 
-# --- Wczytanie danych ---
-df = pd.read_csv("predictions.csv")
-with open("coupons.json") as f:
-    coupons = json.load(f)
+# =========================
+# LOAD DATA
+# =========================
+try:
+    df = pd.read_csv("predictions.csv")
+    with open("coupons.json") as f:
+        coupons = json.load(f)
+except Exception as e:
+    st.error(f"❌ Load error: {e}")
+    st.stop()
 
-# --- Legenda ---
-st.markdown("""
-**Legenda:**
-- ⚽ Piłka nożna – Over 2.5 gola
-- 🏀 Koszykówka – Zwycięstwo gospodarzy / Punkty / Suma punktów
-- `Prob` – przewidywane prawdopodobieństwo wyniku
-- `ValueFlag` – True = wartościowy zakład (>55%)
-- `ModelAccuracy` – dokładność modelu
-""")
-st.markdown("---")
+if df.empty:
+    st.warning("Brak danych predykcyjnych.")
+    st.stop()
 
-# --- Kupony ---
-tabs = st.tabs([f"Kupon {i+1}" for i in range(len(coupons))])
+# =========================
+# HELPERS
+# =========================
+def safe(row, col, default="—"):
+    return row[col] if col in row and pd.notna(row[col]) else default
 
-for i, tab in enumerate(tabs):
-    with tab:
-        st.subheader(f"Kupon {i+1} ({len(coupons[i])} zakładów)")
-        for idx in coupons[i]:
-            row = df.loc[idx]
-            if row["Sport"] == "Football":
-                st.markdown(
-                    f"⚽ **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
-                    f"Liga: {row['League']}  \n"
-                    f"Typ: Over 2.5 gola ({round(row['Over25_Prob']*100,1)}%)  \n"
-                    f"Model Accuracy: {round(row['Over25_ModelAccuracy']*100,1)}%  \n"
-                    f"ValueFlag: {'✅' if row['Over25_ValueFlag'] else '❌'}"
-                )
-            else:
-                st.markdown(
-                    f"🏀 **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
-                    f"Rozgrywki: {row['League']}  \n"
-                    f"Typ: Zwycięstwo gospodarzy ({round(row['HomeWin_Prob']*100,1)}%)  \n"
-                    f"Model Accuracy: {round(row['HomeWin_ModelAccuracy']*100,1)}%  \n"
-                    f"ValueFlag: {'✅' if row['HomeWin_ValueFlag'] else '❌'}"
-                )
-        st.markdown("---")
+
+# =========================
+# SIDEBAR – FILTRY
+# =========================
+st.sidebar.header("🎛 Filtry")
+
+sports = ["All"] + sorted(df["Sport"].dropna().unique().tolist())
+sport_filter = st.sidebar.selectbox("Sport", sports)
+
+leagues = ["All"] + sorted(df["League"].dropna().unique().tolist())
+league_filter = st.sidebar.selectbox("Liga", leagues)
+
+filtered = df.copy()
+if sport_filter != "All":
+    filtered = filtered[filtered["Sport"] == sport_filter]
+if league_filter != "All":
+    filtered = filtered[filtered["League"] == league_filter]
+
+# =========================
+# TABS
+# =========================
+tab1, tab2, tab3 = st.tabs(["🎫 Kupony", "🔥 Top Value Bets", "🧾 Raw Data"])
+
+# =========================
+# TAB 1 – KUPONY
+# =========================
+with tab1:
+    if not coupons:
+        st.info("Brak kuponów.")
+    else:
+        coupon_tabs = st.tabs([f"Kupon {i+1}" for i in range(len(coupons))])
+
+        for i, tab in enumerate(coupon_tabs):
+            with tab:
+                for idx in coupons[i]:
+                    if idx >= len(df):
+                        continue
+                    row = df.iloc[idx]
+
+                    home = safe(row, "HomeTeam")
+                    away = safe(row, "AwayTeam")
+                    league = safe(row, "League")
+                    date = safe(row, "Date")
+
+                    if row["Sport"] == "Football":
+                        prob = float(row.get("Over25_Prob", 0))
+                        st.markdown(
+                            f"⚽ **{home} vs {away}**  \n"
+                            f"Liga: `{league}` | Data: `{date}`  \n"
+                            f"Typ: Over 2.5 gola ({round(prob*100,1)}%)"
+                        )
+                    else:
+                        prob = float(row.get("HomeWin_Prob", 0))
+                        st.markdown(
+                            f"🏀 **{home} vs {away}**  \n"
+                            f"Rozgrywki: `{league}` | Data: `{date}`  \n"
+                            f"Typ: Zwycięstwo gospodarzy ({round(prob*100,1)}%)"
+                        )
+
+                st.markdown("---")
+
+# =========================
+# TAB 2 – TOP VALUE BETS
+# =========================
+with tab2:
+    st.subheader("Top Value Bets")
+    top = filtered.sort_values("ValueScore", ascending=False).head(20)
+
+    st.dataframe(
+        top[[
+            "Sport","Date","League","HomeTeam","AwayTeam","ValueScore"
+        ]],
+        use_container_width=True
+    )
+
+# =========================
+# TAB 3 – RAW DATA
+# =========================
+with tab3:
+    st.subheader("Raw predictions.csv")
+    st.dataframe(filtered, use_container_width=True)
