@@ -1,10 +1,12 @@
 import json
 import pandas as pd
-from data_loader import get_next_matches
-from data_loader_basketball import get_basketball_games
+from data_loader import get_next_matches, get_nba_games
 from feature_engineering import build_features
 from predictor import predict
 
+# =========================
+# GENEROWANIE KUPONÓW
+# =========================
 def generate_coupons(df, n_coupons=5, picks=5):
     """
     Generuje listę kuponów po n_coupons z picks zakładami
@@ -16,21 +18,24 @@ def generate_coupons(df, n_coupons=5, picks=5):
         start = i * picks
         end = start + picks
         if start >= len(indices):
-            break  # brak wierszy
+            break
         coupons.append(indices[start:end])
     return coupons
 
+# =========================
+# GŁÓWNA LOGIKA AGENTA
+# =========================
 def run():
     # ----------------------------
     # 1️⃣ PIŁKA NOŻNA
     # ----------------------------
     football = get_next_matches()
-    print(f"Football matches: {len(football)}")  # debug
+    print(f"Football matches: {len(football)}")
+
     if not football.empty:
         football = build_features(football)
         football_pred = predict(football)
 
-        # Uzupełnij brakujące kolumny
         for col in ["HomeTeam", "AwayTeam", "League", "Date"]:
             football_pred[col] = football.get(col, "Unknown")
 
@@ -45,17 +50,17 @@ def run():
     # ----------------------------
     # 2️⃣ KOSZYKÓWKA (NBA)
     # ----------------------------
-    basketball = get_basketball_games(pages=3)  # pobiera 3 strony po 100 meczów
-    print(f"Basketball matches: {len(basketball)}")  # debug
+    basketball = get_nba_games()
+    print(f"Basketball matches: {len(basketball)}")
 
     if not basketball.empty:
-        basketball_pred = predict(basketball)
-        basketball_pred["Sport"] = "Basketball"
-        basketball_pred["HomeWin_Prob"] = basketball_pred.get("HomeWin_Prob", 0.5)
-        basketball_pred["ValueScore"] = basketball_pred["HomeWin_Prob"]
+        basketball["Sport"] = "Basketball"
+        basketball["HomeWin_Prob"] = 0.55  # proxy dla darmowego modelu
+        basketball["ValueScore"] = basketball["HomeWin_Prob"]
 
-        # Zmiana nazw kolumn, by spójnie łączyć z football
-        basketball_pred = basketball_pred.rename(columns={"HomeScore":"FTHG","AwayScore":"FTAG"})
+        basketball_pred = basketball[[
+            "Date","HomeTeam","AwayTeam","League","Sport","HomeWin_Prob","ValueScore"
+        ]]
     else:
         basketball_pred = pd.DataFrame(columns=football_pred.columns)
 
