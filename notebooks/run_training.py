@@ -47,7 +47,7 @@ print(f"[INFO] Matches after cutoff ({RETENTION_MONTHS} months): {len(football_r
 football_features = build_features(football_recent)
 
 # =========================
-# Przygotowanie targetów (dummy dla treningu)
+# Przygotowanie dummy targetów (jeżeli brak kolumny rynkowej)
 # =========================
 np.random.seed(42)
 for market in MARKETS:
@@ -55,7 +55,22 @@ for market in MARKETS:
         football_features[market] = np.random.randint(0,2,len(football_features))
 
 # =========================
-# Trening i zapis modeli
+# Trening i zapis modeli dla każdego rynku
 # =========================
-train_and_save(football_features)
+feature_cols = [
+    "FTHG","FTAG","HomeRollingGoals","AwayRollingGoals",
+    "HomeRollingConceded","AwayRollingConceded","HomeForm","AwayForm"
+]
+
+for market in MARKETS:
+    if market not in football_features.columns:
+        print(f"[WARN] Market {market} missing in data, skipping...")
+        continue
+
+    features = football_features[feature_cols].copy()
+    target = football_features[market]
+
+    train_and_save(features, target, market)
+    print(f"[INFO] Model saved: {market}")
+
 print("[INFO] Training finished successfully!")
