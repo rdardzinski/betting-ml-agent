@@ -1,22 +1,27 @@
 import pandas as pd
 
-ROLLING_WINDOW = 5
-
-def build_features(df: pd.DataFrame):
+def build_features(df):
+    """
+    Tworzy cechy do predykcji piłki nożnej:
+    - Rolling goals
+    - Forma drużyn
+    - Możliwe dodatkowe cechy: kartki, rogi itp.
+    """
     df = df.copy()
-    df = df.sort_values("Date")
 
-    # Rolling goals
-    df["HomeRollingGoals"] = df.groupby("HomeTeam")["FTHG"].rolling(ROLLING_WINDOW, min_periods=1).mean().reset_index(0, drop=True)
-    df["AwayRollingGoals"] = df.groupby("AwayTeam")["FTAG"].rolling(ROLLING_WINDOW, min_periods=1).mean().reset_index(0, drop=True)
+    # Rolling Goals
+    df["HomeRollingGoals"] = df.groupby("HomeTeam")["FTHG"].transform(lambda x: x.rolling(5, min_periods=1).mean())
+    df["AwayRollingGoals"] = df.groupby("AwayTeam")["FTAG"].transform(lambda x: x.rolling(5, min_periods=1).mean())
 
-    df["HomeRollingConceded"] = df.groupby("HomeTeam")["FTAG"].rolling(ROLLING_WINDOW, min_periods=1).mean().reset_index(0, drop=True)
-    df["AwayRollingConceded"] = df.groupby("AwayTeam")["FTHG"].rolling(ROLLING_WINDOW, min_periods=1).mean().reset_index(0, drop=True)
+    # Forma drużyn
+    df["HomeForm"] = df.groupby("HomeTeam")["FTHG"].transform(lambda x: x.rolling(5, min_periods=1).sum())
+    df["AwayForm"] = df.groupby("AwayTeam")["FTAG"].transform(lambda x: x.rolling(5, min_periods=1).sum())
 
-    # Form (last N games win %)
-    df["HomeForm"] = df.groupby("HomeTeam")["FTHG"].apply(lambda x: x.shift(1).rolling(ROLLING_WINDOW, min_periods=1).mean())
-    df["AwayForm"] = df.groupby("AwayTeam")["FTAG"].apply(lambda x: x.shift(1).rolling(ROLLING_WINDOW, min_periods=1).mean())
+    # Uzupełnij brakujące wartości
+    for col in ["HomeRollingGoals","AwayRollingGoals","HomeForm","AwayForm"]:
+        if col not in df.columns:
+            df[col] = pd.Series(0, index=df.index)
+        else:
+            df[col] = df[col].fillna(0)
 
-    # Fill missing
-    df.fillna(0, inplace=True)
     return df
