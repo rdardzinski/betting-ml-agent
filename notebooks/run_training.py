@@ -2,14 +2,14 @@ import os
 import sys
 import pandas as pd
 from datetime import datetime
+import numpy as np
 
-# Dodanie katalogu głównego repo do PYTHONPATH (notebooks/run_training.py -> ../)
+# Dodanie katalogu głównego repo do PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data_loader import get_next_matches
 from feature_engineering import build_features
 from predictor import train_and_save
-import numpy as np
 
 # =========================
 # Parametry
@@ -47,29 +47,29 @@ print(f"[INFO] Matches after cutoff ({RETENTION_MONTHS} months): {len(football_r
 football_features = build_features(football_recent)
 
 # =========================
-# Przygotowanie dummy targetów (jeżeli brak kolumny rynkowej)
+# Przygotowanie dummy targetów dla brakujących kolumn rynkowych
 # =========================
 np.random.seed(42)
 for market in MARKETS:
     if market not in football_features.columns:
+        print(f"[WARN] Market {market} missing in data, creating dummy target.")
         football_features[market] = np.random.randint(0,2,len(football_features))
 
 # =========================
 # Trening i zapis modeli dla każdego rynku
 # =========================
 feature_cols = [
-    "FTHG","FTAG","HomeRollingGoals","AwayRollingGoals",
-    "HomeRollingConceded","AwayRollingConceded","HomeForm","AwayForm"
+    "FTHG","FTAG",
+    "HomeRollingGoals","AwayRollingGoals",
+    "HomeRollingConceded","AwayRollingConceded",
+    "HomeForm","AwayForm"
 ]
 
 for market in MARKETS:
-    if market not in football_features.columns:
-        print(f"[WARN] Market {market} missing in data, skipping...")
-        continue
-
     features = football_features[feature_cols].copy()
     target = football_features[market]
 
+    # Wywołanie train_and_save z wszystkimi wymaganymi argumentami
     train_and_save(features, target, market)
     print(f"[INFO] Model saved: {market}")
 
