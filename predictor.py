@@ -2,66 +2,56 @@ import os
 import pickle
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 
-MODEL_DIR = "models"
-
-def _ensure_model_dir():
-    if not os.path.exists(MODEL_DIR):
-        os.makedirs(MODEL_DIR)
+MODELS_DIR = "models"
 
 def load_model(market="Over25"):
-    _ensure_model_dir()
-    filename = os.path.join(MODEL_DIR,f"agent_state_{market}.pkl")
+    """Wczytuje model + metadane z dysku"""
+    filename = os.path.join(MODELS_DIR, f"model_{market}.pkl")
     if not os.path.exists(filename):
-        # fallback: utwórz dummy model
-        print(f"[WARN] {filename} nie istnieje, tworzony dummy model.")
-        model = RandomForestClassifier()
-        model.fit(np.zeros((1,5)), [0])
-        return model, 0.5
-    with open(filename,"rb") as f:
+        raise FileNotFoundError(
+            f"{filename} nie istnieje. Uruchom najpierw notebook retrainingowy!"
+        )
+    with open(filename, "rb") as f:
         state = pickle.load(f)
-    return state["model"], state["accuracy"]
+    return state["model"], state["accuracy"], state["features"]
 
-def predict(df):
+
+def predict(df: pd.DataFrame):
+    """
+    Multi-market prediction dla piłki nożnej
+    Zwraca df z kolumnami: *_Prob, *_Confidence, *_ValueFlag, *_ModelAccuracy
+    """
     predictions = df.copy()
-    football_markets = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
-    basketball_markets = ["HomeWin","BasketPoints","BasketSum"]
+    markets = ["Over25", "BTTS", "1HGoals", "2HGoals", "Cards", "Corners"]
 
-    # --- FOOTBALL ---
-    if "FTHG" in df.columns and "FTAG" in df.columns:
-        features = df[["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals","1HGoals","2HGoals","BTTS","Cards","Corners"]].copy()
-        for market in football_markets:
-            model, acc = load_model(market)
-            try:
-                probs_raw = model.predict_proba(features)
-                if probs_raw.shape[1]==1:
-                    probs = np.full(len(features),probs_raw[0,0])
-                else:
-                    probs = probs_raw[:,1]
-            except Exception:
-                probs = np.full(len(features),0.5)
+    for market in markets:
+        try:
+            model, accuracy, features = load_model(market)
+
+            # Sprawdź czy wszystkie feature'y są w df
+            missing = [f for f in features if f not in df.columns]
+            if missing:
+                print(f"[WARN] Market {market}: brakujące feature'y {missing}")
+                features = [f for f in features if f in df.columns]
+
+            X = df[features]
+
+            # predict_proba z obsługą jedynej klasy
+            probs_raw = model.predict_proba(X)
+            if probs_raw.shape[1] == 1:
+                probs = np.full((len(X),), probs_raw[0, 0])
+            else:
+                probs = probs_raw[:, 1]
+
             predictions[f"{market}_Prob"] = probs
-            predictions[f"{market}_Confidence"] = (probs*100).round(1)
-            predictions[f"{market}_ValueFlag"] = probs>0.55
-            predictions[f"{market}_ModelAccuracy"] = acc
+            predictions[f"{market}_Confidence"] = (probs * 100).round(1)
+            predictions[f"{market}_ValueFlag"] = probs > 0.55
+            predictions[f"{market}_ModelAccuracy"] = accuracy
 
-    # --- BASKETBALL ---
-    if "HomeScore" in df.columns and "AwayScore" in df.columns:
-        features_b = df[["HomeScore","AwayScore"]].copy()
-        for market in basketball_markets:
-            model, acc = load_model(market)
-            try:
-                probs_raw = model.predict_proba(np.ones((len(features_b),2)))
-                if probs_raw.shape[1]==1:
-                    probs = np.full(len(features_b),probs_raw[0,0])
-                else:
-                    probs = probs_raw[:,1]
-            except Exception:
-                probs = np.full(len(features_b),0.55)
-            predictions[f"{market}_Prob"] = probs
-            predictions[f"{market}_Confidence"] = (probs*100).round(1)
-            predictions[f"{market}_ValueFlag"] = probs>0.55
-            predictions[f"{market}_ModelAccuracy"] = acc
+        except FileNotFoundError:
+            print(f"[WARN] Model {market} not found, pomijam")
+        except Exception as e:
+            print(f"[ERROR] Prediction failed for {market}: {e}")
 
-    return predictions
+    return predictions, markets
