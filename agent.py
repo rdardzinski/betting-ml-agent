@@ -1,67 +1,136 @@
+import os
 import json
 import pandas as pd
+from datetime import datetime
 from data_loader import get_next_matches
 from data_loader_basketball import get_basketball_games
 from feature_engineering import build_features
-from predictor import predict
+import pickle
+import numpy as np
+
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
 # =========================
-# GENEROWANIE KUPONÓW
+# Funkcja wczytująca model
+# =========================
+def load_model(market):
+    fname = os.path.join(MODEL_DIR, f"agent_state_{market}.pkl")
+    if not os.path.exists(fname):
+        raise FileNotFoundError(f"{fname} not found. Run training first!")
+    with open(fname, "rb") as f:
+        state = pickle.load(f)
+    return state["model"], state["accuracy"]
+
+# =========================
+# Predykcja
+# =========================
+def predict(df):
+    predictions = df.copy()
+    
+    football_markets = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
+    basketball_markets = ["HomeWin","BasketPoints","BasketSum"]
+    
+    # --- Football ---
+    for market in football_markets:
+        try:
+            model, acc = load_model(market)
+            features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals","1HGoals","2HGoals","BTTS","Cards","Corners"]
+            for col in features:
+                if col not in df.columns:
+                    df[col] = 0
+            X = df[features]
+            probs_raw = model.predict_proba(X)
+            if probs_raw.shape[1] == 1:
+                probs = np.full((len(X),), probs_raw[0,0])
+            else:
+                probs = probs_raw[:,1]
+            predictions[f"{market}_Prob"] = probs
+            predictions[f"{market}_Confidence"] = (probs*100).round(1)
+            predictions[f"{market}_ValueFlag"] = probs > 0.55
+            predictions[f"{market}_ModelAccuracy"] = acc
+        except Exception as e:
+            print(f"[ERROR] Football prediction {market}: {e}")
+    
+    # --- Basketball ---
+    for market in basketball_markets:
+        try:
+            model, acc = load_model(market)
+            features = ["HomeScore","AwayScore"]
+            for col in features:
+                if col not in df.columns:
+                    df[col] = 0
+            X = df[features]
+            probs_raw = model.predict_proba(X)
+            if probs_raw.shape[1] == 1:
+                probs = np.full((len(X),), probs_raw[0,0])
+            else:
+                probs = probs_raw[:,1]
+            predictions[f"{market}_Prob"] = probs
+            predictions[f"{market}_Confidence"] = (probs*100).round(1)
+            predictions[f"{market}_ValueFlag"] = probs > 0.55
+            predictions[f"{market}_ModelAccuracy"] = acc
+        except Exception as e:
+            print(f"[ERROR] Basketball prediction {market}: {e}")
+    
+    return predictions
+
+# =========================
+# Generowanie kuponów
 # =========================
 def generate_coupons(df, n_coupons=5, picks=5):
-    df = df.sort_values("ValueScore", ascending=False)
+    df = df.sort_values("Over25_Prob", ascending=False)  # przykładowo sortujemy po football Over25
     coupons = []
-
     indices = list(df.index)
     for i in range(n_coupons):
         coupons.append(indices[i*picks:(i+1)*picks])
-
     return coupons
 
 # =========================
-# GŁÓWNA LOGIKA AGENTA
+# Główna funkcja agenta
 # =========================
 def run():
-    # --- PIŁKA NOŻNA ---
+    # --- Football ---
     football = get_next_matches()
-    football = build_features(football)
-    football_pred = predict(football)
+    if not football.empty and "Date" in football.columns:
+        football = build_features(football)
+        football["Sport"] = "Football"
+        football["ValueScore"] = 0.0
+        football = football.reset_index(drop=True)
+    else:
+        football = pd.DataFrame()
+        print("[WARN] No football matches")
 
-    for col in ["HomeTeam","AwayTeam","League","Date"]:
-        football_pred[col] = football[col]
-
-    football_pred["Sport"] = "Football"
-    football_pred["ValueScore"] = football_pred["Over25_Prob"]
-
-    # --- KOSZYKÓWKA ---
+    # --- Basketball ---
     basketball = get_basketball_games()
-    basketball["HomeWin"] = (basketball["HomeScore"] > basketball["AwayScore"]).astype(int)
-    basketball["HomeWin_Prob"] = 0.55  # proxy (free-first)
-    basketball["ValueScore"] = basketball["HomeWin_Prob"]
-    basketball["Sport"] = "Basketball"
+    if not basketball.empty and "Date" in basketball.columns:
+        basketball["Sport"] = "Basketball"
+        basketball["HomeWin_Prob"] = 0.55
+        basketball["BasketPoints_Prob"] = 0.55
+        basketball["BasketSum_Prob"] = 0.55
+        basketball["ValueScore"] = 0.55
+        basketball = basketball.reset_index(drop=True)
+    else:
+        basketball = pd.DataFrame()
+        print("[WARN] No basketball matches")
 
-    basketball_pred = basketball[[
-        "Date","HomeTeam","AwayTeam","League","Sport",
-        "HomeWin_Prob","ValueScore"
-    ]]
+    # --- Łączenie ---
+    combined = pd.concat([football, basketball], ignore_index=True, sort=False)
 
-    # --- ŁĄCZENIE ---
-    football_pred["HomeWin_Prob"] = None
-    combined = pd.concat([football_pred, basketball_pred], ignore_index=True)
+    # --- Predykcje ---
+    combined_pred = predict(combined)
 
-    # --- TOP 30% ---
-    threshold = combined["ValueScore"].quantile(0.7)
-    combined = combined[combined["ValueScore"] >= threshold]
+    # --- Top 30% ---
+    threshold = combined_pred["ValueScore"].quantile(0.7) if "ValueScore" in combined_pred.columns else 0.5
+    top_pred = combined_pred[combined_pred["ValueScore"] >= threshold]
 
-    # --- ZAPIS ---
-    combined.to_csv("predictions.csv", index=False)
-
-    coupons = generate_coupons(combined)
+    # --- Zapisy ---
+    top_pred.to_csv("predictions.csv", index=False)
+    coupons = generate_coupons(top_pred)
     with open("coupons.json","w") as f:
         json.dump(coupons,f)
-
-    print("Agent finished successfully")
-
+    
+    print(f"Agent finished successfully. Football: {len(football)}, Basketball: {len(basketball)}")
+    print(f"Predictions saved: {len(top_pred)} rows, Coupons saved: {len(coupons)}")
 
 if __name__ == "__main__":
     run()
