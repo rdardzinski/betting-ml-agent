@@ -1,7 +1,6 @@
+import os
 import json
 import pandas as pd
-from pathlib import Path
-
 from data_loader import get_next_matches
 from feature_engineering import build_features
 from predictor import predict
@@ -9,81 +8,61 @@ from predictor import predict
 # =========================
 # GENEROWANIE KUPONÓW
 # =========================
-
 def generate_coupons(df, n_coupons=5, picks=5):
-    df = df.sort_values("ValueScore", ascending=False).reset_index(drop=True)
+    df = df.sort_values("Over25_Prob", ascending=False)  # sortowanie wg value
     coupons = []
+    indices = list(df.index)
 
     for i in range(n_coupons):
-        start = i * picks
-        end = start + picks
-        coupons.append(list(range(start, min(end, len(df)))))
-
+        coupon_indices = indices[i*picks:(i+1)*picks]
+        if coupon_indices:
+            coupons.append(coupon_indices)
     return coupons
-
 
 # =========================
 # GŁÓWNA LOGIKA AGENTA
 # =========================
-
 def run():
     print("[INFO] Loading football matches...")
     football = get_next_matches()
-    print(f"[INFO] Football matches loaded: {len(football)}")
-
     if football.empty:
-        raise RuntimeError("Brak danych piłkarskich")
+        print("[WARN] Brak danych piłki nożnej")
+        return
 
     football = build_features(football)
 
-    print("[INFO] Running football predictions...")
-    football_pred, markets = predict(football)
+    try:
+        football_pred, markets = predict(football)
+    except Exception as e:
+        print("[ERROR] Prediction failed:", e)
+        return
 
-    # Kolumny opisowe – ZAWSZE zachowane
-    for col in ["Date", "HomeTeam", "AwayTeam", "League"]:
-        football_pred[col] = football[col].values
+    for col in ["HomeTeam", "AwayTeam", "League", "Date"]:
+        if col not in football_pred.columns:
+            football_pred[col] = football[col]
 
     football_pred["Sport"] = "Football"
+    football_pred["ValueScore"] = football_pred["Over25_Prob"]
 
     # =========================
-    # VALUE SCORE (max z rynków)
+    # TOP 30% wartościowe
     # =========================
-
-    prob_cols = [c for c in football_pred.columns if c.endswith("_Prob")]
-    football_pred["ValueScore"] = football_pred[prob_cols].max(axis=1)
-
-    # =========================
-    # (Koszykówka – WYŁĄCZONA)
-    # =========================
-    """
-    from data_loader_basketball import get_basketball_games
-    basketball = get_basketball_games()
-    ...
-    """
-
-    combined = football_pred.copy()
+    threshold = football_pred["ValueScore"].quantile(0.7)
+    top_df = football_pred[football_pred["ValueScore"] >= threshold].reset_index(drop=True)
 
     # =========================
-    # TOP 30% VALUE
+    # GENEROWANIE KUPONÓW
     # =========================
-
-    threshold = combined["ValueScore"].quantile(0.7)
-    combined = combined[combined["ValueScore"] >= threshold].reset_index(drop=True)
+    coupons = generate_coupons(top_df, n_coupons=5, picks=5)
 
     # =========================
-    # ZAPIS
+    # ZAPIS DO PLIKÓW
     # =========================
-
-    combined.to_csv("predictions.csv", index=False)
-
-    coupons = generate_coupons(combined)
+    top_df.to_csv("predictions.csv", index=False)
     with open("coupons.json", "w") as f:
-        json.dump(coupons, f, indent=2)
+        json.dump(coupons, f)
 
-    print(f"[INFO] Predictions saved: {len(combined)} rows")
-    print(f"[INFO] Coupons saved: {len(coupons)}")
-    print("[INFO] Agent finished successfully")
-
+    print(f"[INFO] Agent finished successfully: {len(top_df)} predictions, {len(coupons)} coupons")
 
 if __name__ == "__main__":
     run()
