@@ -3,52 +3,83 @@ import pandas as pd
 import json
 
 st.set_page_config(layout="wide")
-st.title("📊 Betting ML Agent – Football")
+st.title("📊 Betting ML Agent – Football (Full Markets)")
 
-# --- Wczytanie danych ---
-df = pd.read_csv("predictions.csv")
-with open("coupons.json") as f:
-    coupons = json.load(f)
+# =========================
+# Wczytanie danych
+# =========================
+try:
+    df = pd.read_csv("predictions.csv")
+except FileNotFoundError:
+    st.error("Brak pliku predictions.csv. Uruchom najpierw agenta.")
+    st.stop()
 
-# --- Legenda ---
+try:
+    with open("coupons.json") as f:
+        coupons = json.load(f)
+except FileNotFoundError:
+    st.error("Brak pliku coupons.json. Uruchom najpierw agenta.")
+    st.stop()
+
+# =========================
+# Filtry i legenda
+# =========================
+leagues = ["All"] + sorted(df["League"].dropna().unique().tolist())
+selected_league = st.selectbox("Filtruj po lidze", leagues)
+
 st.markdown("""
 **Legenda:**
-- ⚽ Piłka nożna – wszystkie rynki: Over 2.5 gola, BTTS, 1HGoals, 2HGoals, Cards, Corners
+- ⚽ Piłka nożna – wszystkie typy zakładów
 - `Prob` – przewidywane prawdopodobieństwo wyniku
 - `ValueFlag` – True = wartościowy zakład (>55%)
 - `ModelAccuracy` – dokładność modelu
+- Typy zakładów dostępne w aplikacji: 
+    - Over 2.5 gola
+    - BTTS (obie drużyny strzelą)
+    - 1HGoals (gole w 1 połowie)
+    - 2HGoals (gole w 2 połowie)
+    - Cards (liczba kartek)
+    - Corners (liczba rzutów rożnych)
 """)
 st.markdown("---")
 
-# --- Filtry ---
-leagues = ["All"] + sorted(df["League"].dropna().unique().tolist())
-league_filter = st.selectbox("Wybierz ligę", leagues)
+# =========================
+# Filtrowanie danych
+# =========================
+if selected_league != "All":
+    df = df[df["League"] == selected_league]
 
-if league_filter != "All":
-    df_filtered = df[df["League"] == league_filter]
-else:
-    df_filtered = df.copy()
+# =========================
+# Funkcja pomocnicza do wyświetlania zakładów
+# =========================
+def display_bet(row, market_name, icon="⚽"):
+    prob_col = f"{market_name}_Prob"
+    flag_col = f"{market_name}_ValueFlag"
+    acc_col = f"{market_name}_ModelAccuracy"
 
-# --- Zakładki kuponów ---
+    if prob_col in row and flag_col in row and acc_col in row:
+        st.markdown(
+            f"{icon} **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
+            f"Liga: {row['League']}  \n"
+            f"Typ: {market_name} ({round(row[prob_col]*100,1)}%)  \n"
+            f"Model Accuracy: {round(row[acc_col]*100,1)}%  \n"
+            f"ValueFlag: {'✅' if row[flag_col] else '❌'}"
+        )
+
+# =========================
+# Wyświetlanie kuponów
+# =========================
 tabs = st.tabs([f"Kupon {i+1}" for i in range(len(coupons))])
 
 for i, tab in enumerate(tabs):
     with tab:
         st.subheader(f"Kupon {i+1} ({len(coupons[i])} zakładów)")
         for idx in coupons[i]:
-            if idx >= len(df_filtered):
+            if idx >= len(df):
                 continue
-            row = df_filtered.iloc[idx]
-            st.markdown(
-                f"⚽ **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
-                f"Liga: {row['League']}  \n"
-                f"Typy i prawdopodobieństwa:  \n"
-                f"Over25_Prob: {round(row.get('Over25_Prob',0)*100,1)}%  | ValueFlag: {'✅' if row.get('Over25_ValueFlag',False) else '❌'}  \n"
-                f"BTTS_Prob: {round(row.get('BTTS_Prob',0)*100,1)}%  | ValueFlag: {'✅' if row.get('BTTS_ValueFlag',False) else '❌'}  \n"
-                f"1HGoals_Prob: {round(row.get('1HGoals_Prob',0)*100,1)}%  | ValueFlag: {'✅' if row.get('1HGoals_ValueFlag',False) else '❌'}  \n"
-                f"2HGoals_Prob: {round(row.get('2HGoals_Prob',0)*100,1)}%  | ValueFlag: {'✅' if row.get('2HGoals_ValueFlag',False) else '❌'}  \n"
-                f"Cards_Prob: {round(row.get('Cards_Prob',0)*100,1)}%  | ValueFlag: {'✅' if row.get('Cards_ValueFlag',False) else '❌'}  \n"
-                f"Corners_Prob: {round(row.get('Corners_Prob',0)*100,1)}%  | ValueFlag: {'✅' if row.get('Corners_ValueFlag',False) else '❌'}  \n"
-                f"ValueScore: {round(row.get('ValueScore',0),2)}  \n"
-            )
+            row = df.iloc[idx]
+
+            # Wyświetlamy wszystkie typy bukmacherskie dla danego meczu
+            for market in ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]:
+                display_bet(row, market)
         st.markdown("---")
