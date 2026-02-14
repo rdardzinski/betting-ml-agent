@@ -1,71 +1,46 @@
 import pickle
+import os
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 
 def load_model(market="Over25"):
-    """
-    Wczytuje model z pliku pickle.
-    """
     filename = f"agent_state_{market}.pkl"
-    try:
-        with open(filename,"rb") as f:
-            state = pickle.load(f)
-        return state["model"], state["accuracy"]
-    except FileNotFoundError:
-        print(f"[WARN] {filename} nie istnieje. Model będzie tworzony na nowo przy nauce.")
-        return None, 0.5
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"{filename} nie istnieje. Uruchom najpierw notebook retrainingowy!")
+    with open(filename,"rb") as f:
+        state = pickle.load(f)
+    return state["model"], state["accuracy"]
 
 def predict(df):
     """
-    Multi-market prediction dla football i basketball
+    Multi-market prediction
+    Zabezpieczenie gdy model.predict_proba zwraca tylko jedną kolumnę
+    oraz brakujące feature'y
     """
     predictions = df.copy()
+    markets = ["Over25","BTTS"]
 
-    football_markets = ["Over25","BTTS","HomeGoal","AwayGoal","TotalGoals"]
-    basketball_markets = ["HomeWin","HomeScore","AwayScore","TotalPoints"]
+    for market in markets:
+        model, accuracy = load_model(market)
 
-    # --- FOOTBALL ---
-    for market in football_markets:
-        model, acc = load_model(market)
-        if model is None:
-            predictions[f"{market}_Prob"] = 0.5
-            predictions[f"{market}_Confidence"] = 50.0
-            predictions[f"{market}_ValueFlag"] = False
-            predictions[f"{market}_ModelAccuracy"] = acc
-            continue
+        features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals"]
 
-        features = df[["FTHG","FTAG"]].fillna(0)
-        probs_raw = model.predict_proba(features)
+        # Uzupełnienie brakujących kolumn
+        for f in features:
+            if f not in predictions.columns:
+                predictions[f] = 0
+
+        X = predictions[features]
+
+        # bezpieczne predict_proba
+        probs_raw = model.predict_proba(X)
         if probs_raw.shape[1] == 1:
-            probs = np.full((len(features),), probs_raw[0,0])
+            probs = np.full((len(X),), probs_raw[0,0])
         else:
             probs = probs_raw[:,1]
 
         predictions[f"{market}_Prob"] = probs
         predictions[f"{market}_Confidence"] = (probs*100).round(1)
         predictions[f"{market}_ValueFlag"] = probs > 0.55
-        predictions[f"{market}_ModelAccuracy"] = acc
-
-    # --- BASKETBALL ---
-    for market in basketball_markets:
-        model, acc = load_model(market)
-        if model is None:
-            predictions[f"{market}_Prob"] = 0.55 if market=="HomeWin" else 0.5
-            predictions[f"{market}_Confidence"] = 50.0
-            predictions[f"{market}_ValueFlag"] = False
-            predictions[f"{market}_ModelAccuracy"] = acc
-            continue
-
-        features = df[["HomeScore","AwayScore"]].fillna(0)
-        probs_raw = model.predict_proba(features)
-        if probs_raw.shape[1] == 1:
-            probs = np.full((len(features),), probs_raw[0,0])
-        else:
-            probs = probs_raw[:,1]
-
-        predictions[f"{market}_Prob"] = probs
-        predictions[f"{market}_Confidence"] = (probs*100).round(1)
-        predictions[f"{market}_ValueFlag"] = probs > 0.55
-        predictions[f"{market}_ModelAccuracy"] = acc
+        predictions[f"{market}_ModelAccuracy"] = accuracy
 
     return predictions
