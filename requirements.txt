@@ -1,8 +1,19 @@
+# Podstawowe
 pandas
 numpy
 scikit-learn
 streamlit
 requests
 joblib
+
+# Web scraping / parsowanie HTML
 beautifulsoup4
 lxml
+aiohttp
+async-timeout
+
+# Opcjonalnie przydatne do analizy i obsługi dat
+python-dateutil
+
+# Do obsługi JSON i serializacji
+jsonschema
