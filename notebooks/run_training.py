@@ -1,6 +1,5 @@
 import os
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 
 from data_loader import get_next_matches
@@ -8,40 +7,56 @@ from feature_engineering import build_features
 from predictor import train_and_save
 
 # =========================
-# Parametry
+# Ustawienia
 # =========================
+
+MODEL_PATH = "models"
+RETENTION_MONTHS = 6
 MARKETS = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
-CUTOFF_DATE = datetime.today() - timedelta(days=180)  # ostatnie 6 miesięcy
 
 # =========================
-# Pobranie danych piłki nożnej
+# Załaduj dane piłki nożnej
 # =========================
+
 print("[INFO] Loading football data...")
 football = get_next_matches()
+
 if football.empty:
-    print("[ERROR] Brak danych piłki nożnej.")
-    exit(1)
+    raise ValueError("[ERROR] No football matches loaded!")
 
-# konwersja daty i filtrowanie ostatnich 6 miesięcy
+cutoff_date = datetime.now() - timedelta(days=30*RETENTION_MONTHS)
 football["Date"] = pd.to_datetime(football["Date"], errors="coerce")
-football = football[football["Date"] >= CUTOFF_DATE]
-print(f"[INFO] Matches after cutoff: {len(football)}")
+football = football[football["Date"] >= cutoff_date]
+print(f"[INFO] Matches after cutoff ({RETENTION_MONTHS} months): {len(football)}")
 
 # =========================
-# Budowa cech
+# Feature engineering
 # =========================
+
 football = build_features(football)
 
 # =========================
-# Trenowanie modeli
+# Trening modeli
 # =========================
-for market in MARKETS:
-    target_col = market  # oczekuje, że kolumna target istnieje w football
-    if target_col not in football.columns:
-        print(f"[WARN] Brak kolumny target dla rynku {market}, pomijam.")
-        continue
 
+for market in MARKETS:
+    if market not in football.columns:
+        # Tworzymy kolumnę binarną jako proxy
+        football[market] = 0
+    print(f"[TRAIN] {market}")
     try:
-        train_and_save(football, target_col, market)
+        train_and_save(football, market, model_path=MODEL_PATH)
     except Exception as e:
-        print(f"[ERROR] Trening dla rynku {market} nie powiódł się: {e}")
+        print(f"[ERROR] Training {market} failed: {e}")
+
+print("[INFO] Training finished successfully!")
+
+# =========================
+# Koszykówka (zakomentowane)
+# =========================
+
+# from data_loader_basketball import get_basketball_games
+# basketball = get_basketball_games()
+# if not basketball.empty:
+#     basketball = build_features_basketball(basketball)
+#     train_and_save_basketball_models(basketball)
