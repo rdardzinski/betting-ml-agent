@@ -7,61 +7,57 @@ from feature_engineering import build_features
 from predictor import train_and_save
 
 # =========================
-# Ustawienia
+# Parametry
 # =========================
-
-MODEL_PATH = "models"
 RETENTION_MONTHS = 6
+TODAY = datetime.today()
+CUTOFF_DATE = TODAY - pd.DateOffset(months=RETENTION_MONTHS)
+
+MODEL_DIR = "models"
+os.makedirs(MODEL_DIR, exist_ok=True)
+
 MARKETS = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
 
-# Utwórz folder na modele jeśli nie istnieje
-os.makedirs(MODEL_PATH, exist_ok=True)
-
 # =========================
-# Załaduj dane piłki nożnej
+# Ładowanie danych
 # =========================
-
 print("[INFO] Loading football data...")
 football = get_next_matches()
 
 if football.empty:
-    raise ValueError("[ERROR] No football matches loaded!")
+    print("[WARN] Brak danych piłki nożnej do treningu!")
+    exit(0)
 
-# Filtr na ostatnie RETENTION_MONTHS
-cutoff_date = datetime.now() - timedelta(days=30*RETENTION_MONTHS)
+# Konwertujemy daty
 football["Date"] = pd.to_datetime(football["Date"], errors="coerce")
-football = football[football["Date"] >= cutoff_date]
-print(f"[INFO] Matches after cutoff ({RETENTION_MONTHS} months): {len(football)}")
+football = football.dropna(subset=["Date"])
+
+# Retention: ostatnie 6 miesięcy
+football_recent = football[football["Date"] >= CUTOFF_DATE].copy()
+print(f"[INFO] Matches after cutoff ({RETENTION_MONTHS} months): {len(football_recent)}")
 
 # =========================
-# Feature engineering
+# Feature Engineering
 # =========================
-
-football = build_features(football)
+football_features = build_features(football_recent)
 
 # =========================
-# Trening modeli
+# Przygotowanie targetów (dummy)
 # =========================
-
+# Dla przykładu: generujemy dummy targety losowo lub na podstawie prostych reguł
+import numpy as np
+np.random.seed(42)
 for market in MARKETS:
-    if market not in football.columns:
-        # Tworzymy kolumnę proxy z dopasowaniem indeksu
-        football[market] = pd.Series(0, index=football.index)
+    if market not in football_features.columns:
+        football_features[market] = np.random.randint(0,2,len(football_features))
 
-    print(f"[TRAIN] {market}")
-    try:
-        train_and_save(football, market, model_path=MODEL_PATH)
-    except Exception as e:
-        print(f"[ERROR] Training {market} failed: {e}")
-
+# =========================
+# Trening i zapis modeli
+# =========================
+train_and_save(football_features)
 print("[INFO] Training finished successfully!")
 
 # =========================
-# Koszykówka (zakomentowane)
-# =========================
-
-# from data_loader_basketball import get_basketball_games
-# basketball = get_basketball_games()
-# if not basketball.empty:
-#     basketball = build_features_basketball(basketball)
-#     train_and_save_basketball_models(basketball)
+# Opcjonalnie: można generować predykcje i kupony bez uruchamiania agenta
+# football_pred = predict(football_features)
+# football_pred.to_csv("predictions.csv", index=False)
