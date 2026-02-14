@@ -1,14 +1,23 @@
+import sys
 import os
+
+# 🔹 Dodaj katalog nadrzędny do ścieżki modułów
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import pandas as pd
 import numpy as np
 import pickle
 from sklearn.ensemble import RandomForestClassifier
 from datetime import datetime, timedelta
+
 from data_loader import get_next_matches
 from data_loader_basketball import get_basketball_games
 from feature_engineering import build_features
 
-MODEL_DIR = "models"
+# ================================
+# Katalog na modele
+# ================================
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
 if not os.path.exists(MODEL_DIR):
     os.makedirs(MODEL_DIR)
 
@@ -25,7 +34,7 @@ BASKETBALL_MARKETS = ["HomeWin","BasketPoints","BasketSum"]
 # ================================
 def train_market(df, market):
     df = df.copy()
-    # Wybór cech dla piłki nożnej
+    # Piłka nożna
     if market in FOOTBALL_MARKETS:
         features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals","1HGoals","2HGoals","BTTS","Cards","Corners"]
         for col in features:
@@ -33,7 +42,7 @@ def train_market(df, market):
                 df[col] = 0
         X = df[features]
         y = df[market] if market in df.columns else np.random.randint(0,2,len(df))
-    # Wybór cech dla koszykówki
+    # Koszykówka
     elif market in BASKETBALL_MARKETS:
         X = df[["HomeScore","AwayScore"]]
         y = df[market] if market in df.columns else np.random.randint(0,2,len(df))
@@ -54,6 +63,7 @@ def train_market(df, market):
 # ================================
 football = get_next_matches()
 football = football[football["Date"]>=CUTOFF_DATE]
+
 if not football.empty:
     football = build_features(football)
     for market in FOOTBALL_MARKETS:
@@ -70,6 +80,7 @@ else:
 # ================================
 basketball = get_basketball_games()
 basketball = basketball[basketball["Date"]>=CUTOFF_DATE]
+
 if not basketball.empty:
     for market in BASKETBALL_MARKETS:
         model, acc = train_market(basketball, market)
@@ -79,3 +90,5 @@ if not basketball.empty:
         print(f"[INFO] Basketball model saved: {market} (acc={acc:.2f})")
 else:
     print("[WARN] Brak meczów koszykówki do treningu")
+
+print("[INFO] Run_training finished successfully")
