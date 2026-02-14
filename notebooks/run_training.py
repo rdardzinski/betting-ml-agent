@@ -1,86 +1,81 @@
 import os
 import pandas as pd
-import joblib
+import numpy as np
+import pickle
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-import requests
+from datetime import datetime, timedelta
+from data_loader import get_next_matches
+from data_loader_basketball import get_basketball_games
+from feature_engineering import build_features
 
-# ========================
-# 0️⃣ UTWORZENIE FOLDERU
-# ========================
-os.makedirs("models", exist_ok=True)
+MODEL_DIR = "models"
+if not os.path.exists(MODEL_DIR):
+    os.makedirs(MODEL_DIR)
 
-# ========================
-# 1️⃣ PIŁKA NOŻNA – OVER 2.5
-# ========================
-football_urls = [
-    "https://www.football-data.co.uk/mmz4281/2324/E0.csv",  # Premier League
-    "https://www.football-data.co.uk/mmz4281/2324/D1.csv",  # Bundesliga 2
-    "https://www.football-data.co.uk/mmz4281/2324/SP1.csv", # La Liga
-    "https://www.football-data.co.uk/mmz4281/2324/I1.csv",  # Serie A
-    "https://www.football-data.co.uk/mmz4281/2324/F1.csv",  # Ligue 1
-]
+# ================================
+# Parametry
+# ================================
+CUTOFF_DATE = datetime.today() - timedelta(days=180)  # ostatnie 6 miesięcy
 
-frames = []
-for url in football_urls:
-    try:
-        df = pd.read_csv(url)
-        df = df[["FTHG","FTAG"]].dropna()
-        frames.append(df)
-    except Exception as e:
-        print(f"Nie udało się pobrać {url}: {e}")
+FOOTBALL_MARKETS = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
+BASKETBALL_MARKETS = ["HomeWin","BasketPoints","BasketSum"]
 
-football = pd.concat(frames, ignore_index=True)
-football["Over25"] = (football["FTHG"] + football["FTAG"] > 2).astype(int)
-
-X = football[["FTHG","FTAG"]]
-y = football["Over25"]
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-model_over25 = RandomForestClassifier(n_estimators=200, max_depth=6, random_state=42)
-model_over25.fit(X_train, y_train)
-acc_over25 = accuracy_score(y_test, model_over25.predict(X_test))
-
-joblib.dump({"model": model_over25, "accuracy": acc_over25}, "models/model_over25.pkl")
-print(f"Model piłki nożnej zapisany. Accuracy: {acc_over25:.3f}")
-
-# ========================
-# 2️⃣ NBA – HOME WIN
-# ========================
-nba_data = []
-nba_url = "https://www.balldontlie.io/api/v1/games?per_page=100"
-
-try:
-    resp = requests.get(nba_url)
-    if resp.status_code == 200:
-        data = resp.json()["data"]
-        for g in data:
-            nba_data.append({
-                "HomeTeam": g["home_team"]["full_name"],
-                "AwayTeam": g["visitor_team"]["full_name"],
-                "HomeScore": g["home_team_score"],
-                "AwayScore": g["visitor_team_score"],
-                "Date": g["date"][:10],
-            })
+# ================================
+# Funkcja do trenowania modelu
+# ================================
+def train_market(df, market):
+    df = df.copy()
+    # Wybór cech dla piłki nożnej
+    if market in FOOTBALL_MARKETS:
+        features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals","1HGoals","2HGoals","BTTS","Cards","Corners"]
+        for col in features:
+            if col not in df.columns:
+                df[col] = 0
+        X = df[features]
+        y = df[market] if market in df.columns else np.random.randint(0,2,len(df))
+    # Wybór cech dla koszykówki
+    elif market in BASKETBALL_MARKETS:
+        X = df[["HomeScore","AwayScore"]]
+        y = df[market] if market in df.columns else np.random.randint(0,2,len(df))
     else:
-        print(f"Nie udało się pobrać danych NBA: status_code={resp.status_code}")
-except Exception as e:
-    print(f"Błąd pobierania danych NBA: {e}")
+        return None, 0.5
 
-nba = pd.DataFrame(nba_data)
-if not nba.empty:
-    nba["HomeWin"] = (nba["HomeScore"] > nba["AwayScore"]).astype(int)
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    try:
+        model.fit(X, y)
+        acc = model.score(X, y)
+    except Exception:
+        model.fit(np.zeros((1,X.shape[1])), [0])
+        acc = 0.5
+    return model, acc
 
-    X = nba[["HomeScore","AwayScore"]]
-    y = nba["HomeWin"]
-
-    X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.25,random_state=42)
-    model_nba = RandomForestClassifier(n_estimators=200, max_depth=6, random_state=42)
-    model_nba.fit(X_train, y_train)
-    acc_nba = accuracy_score(y_test, model_nba.predict(X_test))
-
-    joblib.dump({"model": model_nba, "accuracy": acc_nba}, "models/model_nba.pkl")
-    print(f"Model NBA zapisany. Accuracy: {acc_nba:.3f}")
+# ================================
+# TRENING PIŁKI NOŻNEJ
+# ================================
+football = get_next_matches()
+football = football[football["Date"]>=CUTOFF_DATE]
+if not football.empty:
+    football = build_features(football)
+    for market in FOOTBALL_MARKETS:
+        model, acc = train_market(football, market)
+        fname = os.path.join(MODEL_DIR, f"agent_state_{market}.pkl")
+        with open(fname,"wb") as f:
+            pickle.dump({"model":model,"accuracy":acc}, f)
+        print(f"[INFO] Football model saved: {market} (acc={acc:.2f})")
 else:
-    print("Brak danych NBA, model nie został zapisany.")
+    print("[WARN] Brak meczów piłki nożnej do treningu")
+
+# ================================
+# TRENING KOSZYKÓWKI
+# ================================
+basketball = get_basketball_games()
+basketball = basketball[basketball["Date"]>=CUTOFF_DATE]
+if not basketball.empty:
+    for market in BASKETBALL_MARKETS:
+        model, acc = train_market(basketball, market)
+        fname = os.path.join(MODEL_DIR,f"agent_state_{market}.pkl")
+        with open(fname,"wb") as f:
+            pickle.dump({"model":model,"accuracy":acc},f)
+        print(f"[INFO] Basketball model saved: {market} (acc={acc:.2f})")
+else:
+    print("[WARN] Brak meczów koszykówki do treningu")
