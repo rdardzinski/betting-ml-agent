@@ -45,7 +45,7 @@ football = build_features(football)
 
 for market in MARKETS:
     if market not in football.columns:
-        # Tworzymy kolumnę binarną jako proxy z dopasowaniem indeksu
+        # Tworzymy kolumnę proxy z dopasowaniem indeksu
         football[market] = pd.Series(0, index=football.index)
 
     print(f"[TRAIN] {market}")
