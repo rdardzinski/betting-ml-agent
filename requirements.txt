@@ -1,19 +1,23 @@
-# Podstawowe
-pandas
-numpy
-scikit-learn
-streamlit
-requests
-joblib
+# Core
+pandas>=1.5.3
+numpy>=1.24.3
+scikit-learn>=1.2.2
+joblib>=1.2.0
 
-# Web scraping / parsowanie HTML
-beautifulsoup4
-lxml
-aiohttp
-async-timeout
+# Web / Frontend
+streamlit>=1.26.0
 
-# Opcjonalnie przydatne do analizy i obsługi dat
-python-dateutil
+# Scraping / HTTP requests
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+aiohttp>=3.8.4
+lxml>=4.9.3
 
-# Do obsługi JSON i serializacji
-jsonschema
+# Optional: for async / paged scraping
+asyncio>=3.4.3
+
+# Logging / utils
+python-dateutil>=2.8.2
+
+# For compatibility with older models & pickle
+cloudpickle>=2.2.1
