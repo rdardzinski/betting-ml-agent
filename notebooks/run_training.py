@@ -1,13 +1,16 @@
-import joblib
+import os
 import pandas as pd
+import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
+# Upewnij się, że folder models istnieje
+os.makedirs("models", exist_ok=True)
+
 # =======================
 # PIŁKA NOŻNA – OVER 2.5
 # =======================
-
 urls = [
     "https://www.football-data.co.uk/mmz4281/2324/E0.csv",
     "https://www.football-data.co.uk/mmz4281/2324/D1.csv",
@@ -34,12 +37,12 @@ model_over25 = RandomForestClassifier(n_estimators=200, max_depth=6, random_stat
 model_over25.fit(X_train,y_train)
 acc = accuracy_score(y_test, model_over25.predict(X_test))
 
+# Zapis modelu
 joblib.dump({"model":model_over25,"accuracy":acc},"models/model_over25.pkl")
 
 # =======================
 # NBA – HOME WIN
 # =======================
-
 nba_url = "https://raw.githubusercontent.com/bttmly/nba/master/data/games.csv"
 nba = pd.read_csv(nba_url)
 nba = nba[["home_points","visitor_points"]].dropna()
