@@ -1,70 +1,27 @@
-import os
-import pickle
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
 
-MODEL_DIR = "models"
-os.makedirs(MODEL_DIR, exist_ok=True)
-
-MARKETS = ["Over25","BTTS","1HGoals","2HGoals","Cards","Corners"]
-
-def train_and_save(df):
+def build_features(df):
     """
-    Trenuje modele dla każdego rynku i zapisuje jako pickle
-    """
-    features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals",
-                "HomeRollingConceded","AwayRollingConceded","HomeForm","AwayForm"]
-
-    for market in MARKETS:
-        target = market
-        if target not in df.columns:
-            continue
-
-        X = df[features]
-        y = df[target]
-
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
-        model.fit(X, y)
-        acc = model.score(X, y)
-
-        filename = os.path.join(MODEL_DIR, f"agent_state_{market}.pkl")
-        with open(filename, "wb") as f:
-            pickle.dump({"model":model, "accuracy":acc}, f)
-        print(f"[INFO] Football model saved: {market} (acc={acc:.2f})")
-
-def load_model(market="Over25"):
-    filename = os.path.join(MODEL_DIR, f"agent_state_{market}.pkl")
-    if not os.path.exists(filename):
-        raise FileNotFoundError(f"{filename} nie istnieje. Uruchom najpierw trening!")
-    with open(filename,"rb") as f:
-        state = pickle.load(f)
-    return state["model"], state["accuracy"]
-
-def predict(df):
-    """
-    Przewiduje prawdopodobieństwa dla wszystkich rynków bukmacherskich.
-    Zwraca df z kolumnami: Market_Prob, Market_ValueFlag, Market_ModelAccuracy
+    Buduje cechy dla modeli bukmacherskich piłki nożnej.
+    Zakładamy, że df zawiera kolumny: Date, HomeTeam, AwayTeam, FTHG, FTAG
+    Dodajemy m.in.:
+    - rolling goals scored/conceded w 5 ostatnich meczach
+    - forma zespołu (ostatnie 5 meczów)
     """
     df = df.copy()
-    features = ["FTHG","FTAG","HomeRollingGoals","AwayRollingGoals",
-                "HomeRollingConceded","AwayRollingConceded","HomeForm","AwayForm"]
-
-    for market in MARKETS:
-        try:
-            model, accuracy = load_model(market)
-        except FileNotFoundError:
-            print(f"[WARN] Model {market} not found, pomijam")
-            continue
-
-        X = df[features]
-        probs_raw = model.predict_proba(X)
-        if probs_raw.shape[1] == 1:
-            probs = np.full((len(X),), probs_raw[0,0])
-        else:
-            probs = probs_raw[:,1]
-
-        df[f"{market}_Prob"] = probs
-        df[f"{market}_Confidence"] = (probs*100).round(1)
-        df[f"{market}_ValueFlag"] = probs > 0.55
-        df[f"{market}_ModelAccuracy"] = accuracy
+    df.sort_values(["HomeTeam", "Date"], inplace=True)
+    
+    # Rolling Goals scored
+    df["HomeRollingGoals"] = df.groupby("HomeTeam")["FTHG"].rolling(5, min_periods=1).mean().reset_index(0, drop=True)
+    df["AwayRollingGoals"] = df.groupby("AwayTeam")["FTAG"].rolling(5, min_periods=1).mean().reset_index(0, drop=True)
+    
+    # Rolling Goals conceded
+    df["HomeRollingConceded"] = df.groupby("HomeTeam")["FTAG"].rolling(5, min_periods=1).mean().reset_index(0, drop=True)
+    df["AwayRollingConceded"] = df.groupby("AwayTeam")["FTHG"].rolling(5, min_periods=1).mean().reset_index(0, drop=True)
+    
+    # Form: % zwycięstw w ostatnich 5 meczach (dummy: wygrana = gola >0)
+    df["HomeForm"] = df.groupby("HomeTeam")["FTHG"].apply(lambda x: x.rolling(5, min_periods=1).apply(lambda s: (s>0).mean())).reset_index(0, drop=True)
+    df["AwayForm"] = df.groupby("AwayTeam")["FTAG"].apply(lambda x: x.rolling(5, min_periods=1).apply(lambda s: (s>0).mean())).reset_index(0, drop=True)
+    
+    df.fillna(0, inplace=True)
     return df
