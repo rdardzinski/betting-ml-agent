@@ -1,99 +1,116 @@
 import json
 import pandas as pd
+
 from data_loader import get_next_matches
-from data_loader_basketball import get_basketball_games
 from feature_engineering import build_features
 from predictor import predict
 
+# from data_loader_basketball import get_basketball_games  # ⛔ POMINIĘTE
+# from predictor_basketball import predict_basketball     # ⛔ POMINIĘTE
+
+
 # =========================
-# GLOBALNA STRUKTURA
+# KONFIGURACJA
 # =========================
-BASE_COLUMNS = [
-    "Date", "HomeTeam", "AwayTeam", "League", "Sport",
-    "Over25_Prob", "HomeWin_Prob", "ValueScore"
+FOOTBALL_MARKETS = [
+    "Over25",
+    "BTTS",
+    "Over15",
+    "Under35",
+    "HomeTeamScore",
+    "AwayTeamScore",
+    "TotalGoals"
 ]
 
-def normalize(df: pd.DataFrame) -> pd.DataFrame:
-    """Gwarantuje stałą strukturę danych"""
-    for col in BASE_COLUMNS:
-        if col not in df.columns:
-            df[col] = None
+BASE_COLS = [
+    "Date", "League", "HomeTeam", "AwayTeam", "Sport", "ValueScore"
+]
+
+
+# =========================
+# UTILS
+# =========================
+def ensure_columns(df):
+    for c in BASE_COLS:
+        if c not in df.columns:
+            df[c] = None
     return df
 
 
-# =========================
-# GENEROWANIE KUPONÓW
-# =========================
-def generate_coupons(df, n=5, size=5):
+def generate_coupons(df, coupons=5, picks=5):
     if df.empty:
         return []
 
     df = df.sort_values("ValueScore", ascending=False).reset_index(drop=True)
-    coupons = []
+    result = []
 
-    for i in range(n):
-        block = df.iloc[i*size:(i+1)*size]
+    for i in range(coupons):
+        block = df.iloc[i*picks:(i+1)*picks]
         if not block.empty:
-            coupons.append(block.index.tolist())
+            result.append(block.index.tolist())
 
-    return coupons
+    return result
 
 
 # =========================
 # AGENT
 # =========================
 def run():
-    frames = []
+    print("[INFO] Loading football matches...")
+    matches = get_next_matches()
+    print(f"[INFO] Football matches loaded: {len(matches)}")
 
-    # ---------- FOOTBALL ----------
-    try:
-        football = get_next_matches()
-        print(f"Football matches: {len(football)}")
-
-        if not football.empty:
-            football = build_features(football)
-            football_pred, = predict(football)
-
-            football_pred["Sport"] = "Football"
-            football_pred["ValueScore"] = football_pred.get("Over25_Prob", 0)
-
-            frames.append(normalize(football_pred))
-
-    except Exception as e:
-        print("[ERROR] Football:", e)
-
-    # ---------- BASKETBALL ----------
-    try:
-        basket = get_basketball_games()
-        print(f"Basketball matches: {len(basket)}")
-
-        if not basket.empty:
-            basket["Sport"] = "Basketball"
-            basket["HomeWin_Prob"] = 0.55
-            basket["ValueScore"] = basket["HomeWin_Prob"]
-
-            frames.append(normalize(basket))
-
-    except Exception as e:
-        print("[ERROR] Basketball:", e)
-
-    # ---------- FINAL ----------
-    if not frames:
-        print("[FATAL] No data")
+    if matches.empty:
+        print("[FATAL] No football data")
         return
 
-    combined = pd.concat(frames, ignore_index=True)
-    combined = normalize(combined)
+    # ZAPAMIĘTUJ NAZWY DRUŻYN
+    meta = matches[["Date", "League", "HomeTeam", "AwayTeam"]].copy()
 
-    combined.to_csv("predictions.csv", index=False)
-    print("Predictions saved:", len(combined))
+    # FEATURE ENGINEERING
+    features = build_features(matches)
 
-    coupons = generate_coupons(combined)
+    # PREDYKCJE (tylko liczby)
+    preds, = predict(features)
+
+    # 🔴 KLUCZOWY MOMENT – DOKLEJANIE NAZW
+    football = preds.copy()
+    football[["Date", "League", "HomeTeam", "AwayTeam"]] = meta
+
+    football["Sport"] = "Football"
+
+    # =========================
+    # RYNKI PIŁKARSKIE
+    # =========================
+    football["Over25"] = football.get("Over25_Prob", 0)
+    football["BTTS"] = football.get("BTTS_Prob", 0)
+
+    football["Over15"] = football["Over25"].clip(lower=0.60)
+    football["Under35"] = (1 - football["Over25"]).clip(lower=0.55)
+
+    football["HomeTeamScore"] = football["Over25"] * 0.8
+    football["AwayTeamScore"] = football["Over25"] * 0.7
+    football["TotalGoals"] = football["Over25"]
+
+    # VALUE SCORE – JEDNA METRYKA
+    football["ValueScore"] = football[
+        ["Over25", "BTTS", "Over15"]
+    ].max(axis=1)
+
+    football = ensure_columns(football)
+
+    # =========================
+    # ZAPIS
+    # =========================
+    football.to_csv("predictions.csv", index=False)
+    print(f"[INFO] Predictions saved: {len(football)} rows")
+
+    coupons = generate_coupons(football)
     with open("coupons.json", "w") as f:
         json.dump(coupons, f)
 
-    print("Coupons saved:", len(coupons))
-    print("Agent finished successfully")
+    print(f"[INFO] Coupons saved: {len(coupons)}")
+    print("[SUCCESS] Agent finished")
 
 
 if __name__ == "__main__":
