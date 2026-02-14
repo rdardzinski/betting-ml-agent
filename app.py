@@ -2,71 +2,45 @@ import streamlit as st
 import pandas as pd
 import json
 
-# =========================
-# Streamlit config
-# =========================
 st.set_page_config(layout="wide")
-st.title("📊 Betting ML Agent – Football + Basketball 25/26")
+st.title("📊 Betting ML Agent – Football + Basketball")
 
-# =========================
-# Load predictions & coupons
-# =========================
-try:
-    df = pd.read_csv("predictions.csv")
-except FileNotFoundError:
-    st.error("Brak predictions.csv – uruchom najpierw agenta")
-    st.stop()
+df = pd.read_csv("predictions.csv")
+with open("coupons.json") as f:
+    coupons = json.load(f)
 
-try:
-    with open("coupons.json") as f:
-        coupons = json.load(f)
-except FileNotFoundError:
-    st.error("Brak coupons.json – uruchom najpierw agenta")
-    st.stop()
-
-# =========================
-# LEGEND
-# =========================
 st.markdown("""
 **Legenda:**
-- ⚽ Piłka nożna – różne typy: Over 0.5, 1.5, 2.5, BTTS, Gole w połowie, Kartki, Rzuty rożne
-- 🏀 Koszykówka – Zwycięstwo gospodarzy, Punkty Home/Away, TotalPoints
+- ⚽ Piłka nożna – Over 2.5 gola, BTTS, gole w 1/2 połowie, kartki, rożne
+- 🏀 Koszykówka – Zwycięstwo gospodarzy, punkty drużyny, suma punktów
 - `Prob` – przewidywane prawdopodobieństwo wyniku
-- `ValueFlag` – ✅ = wartościowy zakład (>55%)
+- `ValueScore` – ranking wartościowego zakładu
 - `ModelAccuracy` – dokładność modelu
 """)
 st.markdown("---")
 
-# =========================
-# Tabs – kupony
-# =========================
 tabs = st.tabs([f"Kupon {i+1}" for i in range(len(coupons))])
 
 for i, tab in enumerate(tabs):
     with tab:
         st.subheader(f"Kupon {i+1} ({len(coupons[i])} zakładów)")
-
         for idx in coupons[i]:
             row = df.loc[idx]
-
-            # FOOTBALL
             if row["Sport"] == "Football":
-                markets = [c for c in df.columns if "_Prob" in c and c not in ["HomeWin_Prob","HomeScore_Prob","AwayScore_Prob","TotalPoints_Prob"]]
-                st.markdown(f"⚽ **{row['HomeTeam']} vs {row['AwayTeam']}**  \nLiga: {row['League']}")
-                for m in markets:
-                    prob = round(row.get(m,0)*100,1)
-                    val_flag = '✅' if row.get(m,0) > 0.55 else '❌'
-                    acc = round(row.get(m.replace("_Prob","_ModelAccuracy"),0)*100,1)
-                    st.markdown(f"- Typ: {m.replace('_Prob','')} ({prob}%)  ModelAcc: {acc}%  ValueFlag: {val_flag}")
-
-            # BASKETBALL
+                st.markdown(
+                    f"⚽ **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
+                    f"Liga: {row['League']}  \n"
+                    f"Typ: Over 2.5 gola ({round(row['Over25_Prob']*100,1)}%)  \n"
+                    f"Model Accuracy: {round(row['Over25_ModelAccuracy']*100,1)}%  \n"
+                    f"ValueFlag: {'✅' if row['Over25_Prob']>0.55 else '❌'}"
+                )
             else:
-                markets = [c for c in df.columns if "_Prob" in c and c in ["HomeWin_Prob","HomeScore_Prob","AwayScore_Prob","TotalPoints_Prob"]]
-                st.markdown(f"🏀 **{row['HomeTeam']} vs {row['AwayTeam']}**  \nRozgrywki: {row['League']}")
-                for m in markets:
-                    prob = round(row.get(m,0)*100,1)
-                    val_flag = '✅' if row.get(m,0) > 0.55 else '❌'
-                    acc = round(row.get(m.replace("_Prob","_ModelAccuracy"),0)*100,1)
-                    st.markdown(f"- Typ: {m.replace('_Prob','')} ({prob}%)  ModelAcc: {acc}%  ValueFlag: {val_flag}")
-
+                st.markdown(
+                    f"🏀 **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
+                    f"Rozgrywki: {row['League']}  \n"
+                    f"Typ: Zwycięstwo gospodarzy ({round(row['HomeWin_Prob']*100,1)}%)  \n"
+                    f"Punkty gospodarzy: {row['BasketPoints']}  \n"
+                    f"Suma punktów: {row['BasketSum']}  \n"
+                    f"ValueScore: {row['ValueScore']}"
+                )
         st.markdown("---")
