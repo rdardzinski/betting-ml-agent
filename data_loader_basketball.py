@@ -14,7 +14,7 @@ def get_basketball_games(pages=3):
     apis = [
         "https://www.balldontlie.io/api/v1/games",
         # dodaj inne API jeśli dostępne np. europejska liga
-        # "https://api.example.com/euroleague/games"
+        #"https://api.example.com/euroleague/games"
     ]
 
     # =========================
