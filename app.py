@@ -1,71 +1,33 @@
 import streamlit as st
 import pandas as pd
-import os
 import json
 
 st.set_page_config(layout="wide")
-st.title("📊 Free First Betting Agent Dashboard v4 – Multi-market z drużynami")
-
-# ======== Wczytanie predykcji ========
-if not os.path.exists("predictions.csv"):
-    st.warning("No predictions yet. Uruchom najpierw agent.py")
-    st.stop()
+st.title("📊 Betting ML Agent – Football + Basketball")
 
 df = pd.read_csv("predictions.csv")
 
-# ======== Wczytanie kuponów i mapowanie na nazwy drużyn ========
-coupons = []
-if os.path.exists("coupons.json"):
-    with open("coupons.json","r") as f:
-        coupons_raw = json.load(f)
-    for coupon in coupons_raw:
-        matches_list = []
-        for i in coupon:
-            try:
-                match_str = f"{df.loc[i,'HomeTeam']} vs {df.loc[i,'AwayTeam']}"
-            except KeyError:
-                match_str = f"Match index {i}"
-            matches_list.append(match_str)
-        coupons.append(matches_list)
+with open("coupons.json") as f:
+    coupons = json.load(f)
 
-# ======== Tabs ========
-tab1, tab2, tab3 = st.tabs(["🎯 Predykcje","📘 Legenda","💰 Kupony"])
+tabs = st.tabs([f"Kupon {i+1}" for i in range(len(coupons))])
 
-with tab1:
-    st.subheader("Nadchodzące mecze – Multi-market")
-    display_cols = ["League","HomeTeam","AwayTeam","Date",
-                    "Over25_Prob","Over25_Confidence","Over25_ValueFlag","Over25_ModelAccuracy",
-                    "BTTS_Prob","BTTS_Confidence","BTTS_ValueFlag","BTTS_ModelAccuracy"]
-    # filtracja kolumn, które faktycznie istnieją
-    display_cols = [col for col in display_cols if col in df.columns]
-    st.dataframe(df[display_cols], use_container_width=True)
+for i, tab in enumerate(tabs):
+    with tab:
+        st.subheader(f"Kupon {i+1} (5 zakładów)")
 
-    # Podsumowanie z JSON log
-    if os.path.exists("predictions_log.json"):
-        with open("predictions_log.json","r") as f:
-            metrics = json.load(f)
-        st.subheader("📈 Statystyki predykcji")
-        st.json(metrics)
+        for idx in coupons[i]:
+            row = df.loc[idx]
 
-with tab2:
-    st.markdown("""
-## 📘 Legenda
-
-**Over25_Prob / BTTS_Prob** – prawdopodobieństwo danego rynku  
-**Over25_Confidence / BTTS_Confidence** – pewność modelu w %  
-**Over25_ValueFlag / BTTS_ValueFlag** – True jeśli >55%  
-**Over25_ModelAccuracy / BTTS_ModelAccuracy** – skuteczność modelu na danych testowych  
-
-System:
-- Dane historyczne: Football-Data / TheSportsDB
-- Model: RandomForestClassifier
-- Aktualizacja: GitHub Actions
-""")
-
-with tab3:
-    st.subheader("💰 20 wygenerowanych kuponów typu 3 z 4")
-    if coupons:
-        for i, coupon in enumerate(coupons[:20]):
-            st.markdown(f"**Kupon {i+1}:** {', '.join(coupon)}")
-    else:
-        st.info("Brak kuponów. Uruchom agent.py aby je wygenerować.")
+            if row["Sport"] == "Football":
+                st.markdown(
+                    f"⚽ **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
+                    f"Liga: {row['League']}  \n"
+                    f"Typ: Over 2.5 gola ({round(row['Over25_Prob']*100,1)}%)"
+                )
+            else:
+                st.markdown(
+                    f"🏀 **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
+                    f"Rozgrywki: {row['League']}  \n"
+                    f"Typ: Zwycięstwo gospodarzy ({round(row['HomeWin_Prob']*100,1)}%)"
+                )
