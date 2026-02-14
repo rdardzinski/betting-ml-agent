@@ -1,10 +1,15 @@
 import os
+import sys
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
+
+# Dodanie katalogu głównego repo do PYTHONPATH (notebooks/run_training.py -> ../)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data_loader import get_next_matches
 from feature_engineering import build_features
 from predictor import train_and_save
+import numpy as np
 
 # =========================
 # Parametry
@@ -28,9 +33,9 @@ if football.empty:
     print("[WARN] Brak danych piłki nożnej do treningu!")
     exit(0)
 
-# Konwertujemy daty
+# Konwersja dat
 football["Date"] = pd.to_datetime(football["Date"], errors="coerce")
-football = football.dropna(subset=["Date"])
+football = football.dropna(subset=["Date", "HomeTeam", "AwayTeam"])
 
 # Retention: ostatnie 6 miesięcy
 football_recent = football[football["Date"] >= CUTOFF_DATE].copy()
@@ -42,10 +47,8 @@ print(f"[INFO] Matches after cutoff ({RETENTION_MONTHS} months): {len(football_r
 football_features = build_features(football_recent)
 
 # =========================
-# Przygotowanie targetów (dummy)
+# Przygotowanie targetów (dummy dla treningu)
 # =========================
-# Dla przykładu: generujemy dummy targety losowo lub na podstawie prostych reguł
-import numpy as np
 np.random.seed(42)
 for market in MARKETS:
     if market not in football_features.columns:
@@ -56,8 +59,3 @@ for market in MARKETS:
 # =========================
 train_and_save(football_features)
 print("[INFO] Training finished successfully!")
-
-# =========================
-# Opcjonalnie: można generować predykcje i kupony bez uruchamiania agenta
-# football_pred = predict(football_features)
-# football_pred.to_csv("predictions.csv", index=False)
