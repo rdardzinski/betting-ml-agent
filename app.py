@@ -5,35 +5,27 @@ import json
 st.set_page_config(layout="wide")
 st.title("📊 Betting ML Agent – Football + Basketball")
 
-# Wczytanie predykcji i kuponów
 df = pd.read_csv("predictions.csv")
-
 with open("coupons.json") as f:
     coupons = json.load(f)
 
-# Legend / tooltipy
-st.markdown(
-    """
-    **Legenda:**
-    - ⚽ Piłka nożna – Over 2.5 gola
-    - 🏀 Koszykówka – Zwycięstwo gospodarzy
-    - `Prob` – przewidywane prawdopodobieństwo wyniku
-    - `ValueFlag` – True = potencjalnie wartościowy zakład (>55%)
-    - `ModelAccuracy` – dokładność modelu na danych testowych
-    """
-)
+st.markdown("""
+**Legenda:**
+- ⚽ Piłka nożna – Over 2.5 gola
+- 🏀 Koszykówka – Zwycięstwo gospodarzy
+- `Prob` – przewidywane prawdopodobieństwo wyniku
+- `ValueFlag` – True = wartościowy zakład (>55%)
+- `ModelAccuracy` – dokładność modelu
+""")
 st.markdown("---")
 
-# Zakładki dla kuponów
 tabs = st.tabs([f"Kupon {i+1}" for i in range(len(coupons))])
 
 for i, tab in enumerate(tabs):
     with tab:
         st.subheader(f"Kupon {i+1} ({len(coupons[i])} zakładów)")
-
         for idx in coupons[i]:
             row = df.loc[idx]
-
             if row["Sport"] == "Football":
                 st.markdown(
                     f"⚽ **{row['HomeTeam']} vs {row['AwayTeam']}**  \n"
