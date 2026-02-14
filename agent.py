@@ -2,67 +2,60 @@ import os
 import json
 import pandas as pd
 from data_loader import get_next_matches
-from feature_engineering import build_features
 from predictor import predict
 
 # =========================
 # GENEROWANIE KUPONÓW
 # =========================
 def generate_coupons(df, n_coupons=5, picks=5):
-    df = df.sort_values("Over25_Prob", ascending=False)  # sortowanie wg value
-    coupons = []
-    indices = list(df.index)
+    if df.empty:
+        return []
 
+    df = df.sort_values("Over25_Prob", ascending=False)  # lub ValueScore
+    coupons = []
+
+    indices = list(df.index)
     for i in range(n_coupons):
-        coupon_indices = indices[i*picks:(i+1)*picks]
-        if coupon_indices:
-            coupons.append(coupon_indices)
+        coupons.append(indices[i*picks:(i+1)*picks])
+
     return coupons
 
 # =========================
 # GŁÓWNA LOGIKA AGENTA
 # =========================
 def run():
-    print("[INFO] Loading football matches...")
+    # --- PIŁKA NOŻNA ---
     football = get_next_matches()
     if football.empty:
-        print("[WARN] Brak danych piłki nożnej")
+        print("[WARN] Brak danych piłki nożnej – predykcja pominięta")
         return
-
-    football = build_features(football)
 
     try:
-        football_pred, markets = predict(football)
+        football_pred, available_markets = predict(football)
     except Exception as e:
-        print("[ERROR] Prediction failed:", e)
+        print(f"[ERROR] Predykcja football: {e}")
         return
 
-    for col in ["HomeTeam", "AwayTeam", "League", "Date"]:
-        if col not in football_pred.columns:
-            football_pred[col] = football[col]
+    # zabezpieczenie kolumn
+    for col in ["HomeTeam","AwayTeam","League","Date"]:
+        football_pred[col] = football[col] if col in football.columns else None
 
+    # ValueScore na podstawie Over25_Prob (można rozszerzyć)
     football_pred["Sport"] = "Football"
-    football_pred["ValueScore"] = football_pred["Over25_Prob"]
+    football_pred["ValueScore"] = football_pred["Over25_Prob"] if "Over25_Prob" in football_pred.columns else 0
 
-    # =========================
-    # TOP 30% wartościowe
-    # =========================
-    threshold = football_pred["ValueScore"].quantile(0.7)
-    top_df = football_pred[football_pred["ValueScore"] >= threshold].reset_index(drop=True)
+    # --- ZAPIS PREDYKCJI ---
+    football_pred.to_csv("predictions.csv", index=False)
 
-    # =========================
-    # GENEROWANIE KUPONÓW
-    # =========================
-    coupons = generate_coupons(top_df, n_coupons=5, picks=5)
-
-    # =========================
-    # ZAPIS DO PLIKÓW
-    # =========================
-    top_df.to_csv("predictions.csv", index=False)
-    with open("coupons.json", "w") as f:
+    # --- GENEROWANIE KUPONÓW ---
+    coupons = generate_coupons(football_pred)
+    with open("coupons.json","w") as f:
         json.dump(coupons, f)
 
-    print(f"[INFO] Agent finished successfully: {len(top_df)} predictions, {len(coupons)} coupons")
+    print(f"Football matches: {len(football_pred)}")
+    print(f"Predictions saved: {len(football_pred)} rows")
+    print(f"Coupons saved: {len(coupons)}")
+    print("Agent finished successfully")
 
 if __name__ == "__main__":
     run()
