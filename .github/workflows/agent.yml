@@ -25,9 +25,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run training notebook
-      run: |
-        python notebooks/run_training.py
+    - name: Train Models
+      run: python -m notebooks.run_training
 
     - name: Run agent to generate predictions
       run: |
