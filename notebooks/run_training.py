@@ -1,7 +1,18 @@
+# =========================
+# FIX IMPORT PATH
+# =========================
+import sys
+from pathlib import Path
+
+# dodaje katalog główny projektu do PYTHONPATH
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+# =========================
+# IMPORTY
+# =========================
 import os
-import json
-import pandas as pd
 from datetime import datetime, timedelta
+import pandas as pd
 
 from data_loader import load_football_data
 from feature_engineering import build_features
@@ -10,30 +21,15 @@ from predictor import train_and_save
 # =========================
 # KONFIGURACJA
 # =========================
-
 CUTOFF_MONTHS = 6
-CUTOFF_DATE = datetime.utcnow() - timedelta(days=30 * CUTOFF_MONTHS)
-
-MARKETS = {
-    "Over25": {
-        "target_col": "FTHG_FTAG_SUM_GT_25"
-    },
-    "BTTS": {
-        "target_col": "BTTS_YN"
-    },
-    "1HGoals": {
-        "target_col": "HTHG_HTAG_SUM_GT_05"
-    },
-    "2HGoals": {
-        "target_col": "2H_GOALS_GT_05"
-    },
-    "Cards": {
-        "target_col": "TOTAL_CARDS_GT_35"
-    },
-    "Corners": {
-        "target_col": "TOTAL_CORNERS_GT_95"
-    },
-}
+MARKETS = [
+    "Over25",
+    "BTTS",
+    "1HGoals",
+    "2HGoals",
+    "Cards",
+    "Corners",
+]
 
 MODELS_DIR = "models"
 os.makedirs(MODELS_DIR, exist_ok=True)
@@ -41,98 +37,74 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 # =========================
 # MAIN
 # =========================
-
 def main():
     print("[INFO] Loading football data...")
+    football, report = load_football_data()
 
-    matches, missing_leagues = load_football_data()
+    if football.empty:
+        raise RuntimeError("Brak danych piłkarskich – trening przerwany")
 
-    if matches.empty:
-        raise RuntimeError("No football data loaded – training aborted")
+    # =========================
+    # FILTR DATY (6 MIESIĘCY)
+    # =========================
+    cutoff_date = datetime.utcnow() - timedelta(days=30 * CUTOFF_MONTHS)
+    football["Date"] = pd.to_datetime(football["Date"], errors="coerce")
+    football = football[football["Date"] >= cutoff_date]
 
-    # cutoff
-    matches["Date"] = pd.to_datetime(matches["Date"], errors="coerce")
-    matches = matches[matches["Date"] >= CUTOFF_DATE]
+    print(f"[INFO] Matches after cutoff ({CUTOFF_MONTHS} months): {len(football)}")
 
-    print(f"[INFO] Matches after cutoff ({CUTOFF_MONTHS} months): {len(matches)}")
+    if football.empty:
+        raise RuntimeError("Brak danych po filtrze dat")
 
     # =========================
     # FEATURE ENGINEERING
     # =========================
     print("[INFO] Building features...")
+    features_df = build_features(football)
 
-    features = build_features(matches)
-
-    if features.empty:
-        raise RuntimeError("Feature engineering returned empty dataframe")
-
-    # =========================
-    # TRAIN PER MARKET & LEAGUE
-    # =========================
-
-    summary = []
-
-    for market, cfg in MARKETS.items():
-        target_col = cfg["target_col"]
-
-        print(f"\n[TRAIN] Market: {market}")
-
-        if target_col not in features.columns:
-            print(f"[WARN] Target {target_col} missing – creating dummy target")
-            features[target_col] = 0
-
-        for league in sorted(features["League"].unique()):
-            league_df = features[features["League"] == league].copy()
-
-            if len(league_df) < 200:
-                print(f"[SKIP] {market} | {league} – too few samples ({len(league_df)})")
-                continue
-
-            try:
-                acc = train_and_save(
-                    df=league_df,
-                    target_col=target_col,
-                    market=market,
-                    league=league,
-                )
-
-                summary.append({
-                    "Market": market,
-                    "League": league,
-                    "Samples": len(league_df),
-                    "Accuracy": round(acc, 3),
-                })
-
-                print(f"[OK] {market} | {league} acc={acc:.3f}")
-
-            except Exception as e:
-                print(f"[ERROR] {market} | {league}: {e}")
+    if features_df.empty:
+        raise RuntimeError("Feature engineering zwrócił pusty DataFrame")
 
     # =========================
-    # ZAPIS PODSUMOWANIA
+    # TRENING MODELI
     # =========================
+    for market in MARKETS:
+        print(f"[TRAIN] Market: {market}")
 
-    summary_df = pd.DataFrame(summary)
-    summary_path = os.path.join(MODELS_DIR, "training_summary.csv")
-    summary_df.to_csv(summary_path, index=False)
+        # target
+        if market not in features_df.columns:
+            print(f"[WARN] Market {market} missing in data, creating dummy target.")
+            features_df[market] = 0
 
-    meta = {
-        "trained_at": datetime.utcnow().isoformat(),
-        "cutoff_months": CUTOFF_MONTHS,
-        "markets": list(MARKETS.keys()),
-        "missing_leagues": missing_leagues,
-    }
+        target = features_df[market]
 
-    with open(os.path.join(MODELS_DIR, "metadata.json"), "w") as f:
-        json.dump(meta, f, indent=2)
+        # usuwamy target z feature setu
+        X = features_df.drop(columns=MARKETS, errors="ignore")
 
-    print("\n[INFO] Training completed successfully")
-    print(f"[INFO] Summary saved to {summary_path}")
+        try:
+            acc = train_and_save(
+                X=X,
+                y=target,
+                market=market,
+                models_dir=MODELS_DIR
+            )
+            print(f"[OK] {market} trained (acc={acc:.3f})")
 
+        except Exception as e:
+            print(f"[ERROR] Training failed for {market}: {e}")
+
+    print("[DONE] Training completed successfully")
+
+    # =========================
+    # RAPORT BRAKÓW LIG
+    # =========================
+    if report:
+        print("\n[REPORT] Leagues with missing data:")
+        for k, v in report.items():
+            print(f" - {k}: {v}")
 
 # =========================
 # ENTRYPOINT
 # =========================
-
 if __name__ == "__main__":
     main()
