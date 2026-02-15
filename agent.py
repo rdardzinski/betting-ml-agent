@@ -1,64 +1,35 @@
-import os
+import os, joblib, json
 import pandas as pd
-import json
-from predictor import predict
-from data_loader import get_next_matches
-from feature_engineering import build_features
 
-# =========================
-# Generowanie kuponów
-# =========================
-def generate_coupons(df, n_coupons=5, picks=5):
-    df = df.sort_values("ValueScore", ascending=False)
-    coupons = []
+MODELS = "models/football"
+rows, coupons = [], []
 
-    indices = df.index.tolist()
-    for i in range(n_coupons):
-        start = i*picks
-        end = start+picks
-        if start >= len(indices):
-            break
-        coupons.append(indices[start:end])
+df = pd.read_csv("data.csv")
 
-    return coupons
+for league in os.listdir(MODELS):
+    for market in os.listdir(f"{MODELS}/{league}"):
+        model_file = sorted(os.listdir(f"{MODELS}/{league}/{market}"))[-1]
+        model = joblib.load(f"{MODELS}/{league}/{market}/{model_file}")
 
-# =========================
-# Główny agent
-# =========================
-def run():
-    # --- PIŁKA NOŻNA ---
-    football = get_next_matches()
-    if football.empty:
-        print("[WARN] Brak danych piłki nożnej.")
-        return
+        subset = df[df["League"] == league]
+        X = subset.select_dtypes("number")
+        probs = model.predict_proba(X)[:,1]
 
-    football = build_features(football)
+        for i, p in zip(subset.index, probs):
+            rows.append({
+                "Date": subset.loc[i,"Date"],
+                "League": league,
+                "HomeTeam": subset.loc[i,"HomeTeam"],
+                "AwayTeam": subset.loc[i,"AwayTeam"],
+                "Market": market,
+                "Prob": p
+            })
 
-    features_cols = [
-        "FTHG","FTAG",
-        "HomeRollingGoals","AwayRollingGoals",
-        "HomeRollingConceded","AwayRollingConceded",
-        "HomeForm","AwayForm"
-    ]
-    features = football[features_cols]
+pred = pd.DataFrame(rows)
+pred.to_csv("predictions.csv", index=False)
 
-    preds = predict(features)
-    football_pred = pd.concat([football.reset_index(drop=True), preds.reset_index(drop=True)], axis=1)
+for _, g in pred[pred["Prob"]>0.6].groupby("Date"):
+    coupon = g.sort_values("Prob", ascending=False).head(5).index.tolist()
+    coupons.append(coupon)
 
-    # Obliczenie ValueScore – najprostsza strategia: max prob z wszystkich rynków
-    prob_cols = [c for c in preds.columns if c.endswith("_Prob")]
-    football_pred["ValueScore"] = football_pred[prob_cols].max(axis=1)
-
-    # --- Zapis wyników ---
-    football_pred.to_csv("predictions.csv", index=False)
-
-    coupons = generate_coupons(football_pred)
-    with open("coupons.json", "w") as f:
-        json.dump(coupons, f)
-
-    print(f"[INFO] Predictions saved: {len(football_pred)} rows")
-    print(f"[INFO] Coupons saved: {len(coupons)}")
-    print("[INFO] Agent finished successfully.")
-
-if __name__ == "__main__":
-    run()
+json.dump(coupons, open("coupons.json","w"))
