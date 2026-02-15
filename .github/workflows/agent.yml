@@ -1,56 +1,36 @@
-name: Train and Predict Betting ML Agent
+name: Football ML Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 8 * * 1'  # co poniedziałek o 08:00 UTC dla wt-pt
-    - cron: '0 8 * * 4'  # co czwartek o 08:00 UTC dla piątek-pon
-  workflow_dispatch:   # ręczne uruchomienie
+    - cron: "0 3 * * *"
+    - cron: "0 5 * * 6"
+  workflow_dispatch:
 
 jobs:
-  train_predict:
+  train:
     runs-on: ubuntu-latest
-    permissions: write-all
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.10"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+    - name: Install deps
+      run: pip install -r requirements.txt
 
-    - name: Train Models
-      run: python -m notebooks.run_training
+    - name: Train models
+      run: python notebooks/run_training.py
 
-    - name: Run agent to generate predictions
-      run: |
-        python agent.py
+    - name: Run agent
+      run: python agent.py
 
-    - name: Add files if they exist
+    - name: Commit artifacts
       run: |
         git config user.name "github-actions"
         git config user.email "actions@github.com"
-        # modele
-        if [ -d models ]; then
-          git add models/*
-        fi
-        # predykcje i kupony
-        if [ -f predictions.csv ]; then
-          git add predictions.csv
-        fi
-        if [ -f coupons.json ]; then
-          git add coupons.json
-        fi
-
-    - name: Commit changes
-      run: |
-        git commit -m "Update models, predictions and coupons" || echo "Brak zmian do commita"
-
-    - name: Push changes
-      run: git push
+        git add models predictions.csv coupons.json
+        git commit -m "Auto retrain & predictions" || echo "No changes"
+        git push
