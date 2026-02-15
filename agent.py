@@ -1,125 +1,112 @@
-# agent.py
 import json
+from datetime import datetime, timedelta
 import pandas as pd
 from pathlib import Path
 
-PREDICTIONS_FILE = "predictions.csv"
-COUPONS_FILE = "coupons.json"
+from data_loader import load_football_data, get_upcoming_matches
+from predictor import predict_markets
 
+# === KONFIG ===
+MAX_BETS_PER_MATCH = 3
 MAX_BETS_PER_COUPON = 5
-MIN_PROB = 0.55
+MIN_PROBABILITY = 0.55
 
-MARKETS = [
-    "Over25",
-    "BTTS",
-    "1HGoals",
-    "2HGoals",
-    "Cards",
-    "Corners",
-]
+COUPONS_FILE = "coupons.json"
+ARCHIVE_DIR = Path("coupons_archive")
+ARCHIVE_DIR.mkdir(exist_ok=True)
 
 
-def load_predictions() -> pd.DataFrame:
-    if not Path(PREDICTIONS_FILE).exists():
-        raise FileNotFoundError("predictions.csv not found – uruchom run_training.py")
+# === DATY WEEKENDÓW ===
+def current_and_next_weekend():
+    today = datetime.utcnow().date()
+    friday = today + timedelta((4 - today.weekday()) % 7)
+    sunday = friday + timedelta(days=2)
 
-    df = pd.read_csv(PREDICTIONS_FILE)
+    next_friday = friday + timedelta(days=7)
+    next_sunday = next_friday + timedelta(days=2)
 
-    base_cols = ["Date", "HomeTeam", "AwayTeam", "League"]
-    for c in base_cols:
-        if c not in df.columns:
-            df[c] = "Unknown"
-
-    rows = []
-
-    # 🔁 TRANSFORMACJA STAREGO FORMATU → DŁUGI FORMAT
-    for market in MARKETS:
-        prob_col = f"{market}_Prob"
-        acc_col = f"{market}_ModelAccuracy"
-
-        if prob_col not in df.columns or acc_col not in df.columns:
-            continue
-
-        tmp = df[base_cols + [prob_col, acc_col]].copy()
-        tmp.rename(
-            columns={
-                prob_col: "Probability",
-                acc_col: "ModelAccuracy",
-            },
-            inplace=True,
-        )
-        tmp["Market"] = market
-        rows.append(tmp)
-
-    if not rows:
-        raise ValueError("Brak rozpoznawalnych rynków w predictions.csv")
-
-    long_df = pd.concat(rows, ignore_index=True)
-
-    return long_df
+    return (friday, sunday), (next_friday, next_sunday)
 
 
-def build_coupons(df: pd.DataFrame) -> list:
-    df = df[df["Probability"] >= MIN_PROB].copy()
-
-    df["Score"] = df["Probability"] * df["ModelAccuracy"]
-    df = df.sort_values("Score", ascending=False)
-
+# === GENEROWANIE KUPONÓW ===
+def generate_coupons(predictions: pd.DataFrame):
     coupons = []
-    used_matches = set()
-    current_coupon = []
+    coupon_id = 1
 
-    for _, row in df.iterrows():
-        match_id = f"{row['Date']}|{row['HomeTeam']}|{row['AwayTeam']}"
+    # grupujemy po meczu
+    for (date, home, away), group in predictions.groupby(
+        ["Date", "HomeTeam", "AwayTeam"]
+    ):
+        group = group.sort_values("Probability", ascending=False)
+        group = group[group["Probability"] >= MIN_PROBABILITY]
+        group = group.head(MAX_BETS_PER_MATCH)
 
-        if match_id in used_matches:
+        if group.empty:
             continue
 
-        bet = {
-            "Date": row["Date"],
-            "Match": f"{row['HomeTeam']} vs {row['AwayTeam']}",
-            "League": row["League"],
-            "Market": row["Market"],
-            "Probability": round(row["Probability"], 3),
-            "ModelAccuracy": round(row["ModelAccuracy"], 3),
-            "ValueFlag": row["Probability"] >= 0.55,
-        }
+        for _, row in group.iterrows():
+            coupons.append({
+                "CouponID": coupon_id,
+                "Date": str(date),
+                "HomeTeam": home,
+                "AwayTeam": away,
+                "League": row["League"],
+                "Market": row["Market"],
+                "Probability": round(row["Probability"], 3),
+                "ModelAccuracy": round(row["ModelAccuracy"], 3),
+                "GeneratedAt": datetime.utcnow().isoformat(),
+                "Status": "active"
+            })
 
-        current_coupon.append(bet)
-        used_matches.add(match_id)
-
-        if len(current_coupon) == MAX_BETS_PER_COUPON:
-            coupons.append(current_coupon)
-            current_coupon = []
-            used_matches = set()
-
-        if len(coupons) == 5:
-            break
-
-    if current_coupon:
-        coupons.append(current_coupon)
+            if len(coupons) % MAX_BETS_PER_COUPON == 0:
+                coupon_id += 1
 
     return coupons
 
 
-def save_coupons(coupons: list):
-    with open(COUPONS_FILE, "w", encoding="utf-8") as f:
-        json.dump(coupons, f, indent=2, ensure_ascii=False)
+# === ARCHIWIZACJA ===
+def archive_finished_coupons(coupons):
+    now = datetime.utcnow()
+
+    active = []
+    for c in coupons:
+        match_date = datetime.fromisoformat(c["Date"])
+        if match_date < now:
+            c["Status"] = "archived"
+            fname = ARCHIVE_DIR / f"coupon_{c['CouponID']}.json"
+            with open(fname, "w") as f:
+                json.dump(c, f, indent=2)
+        else:
+            active.append(c)
+
+    return active
 
 
+# === MAIN ===
 def run():
-    print("[INFO] Loading predictions...")
-    df = load_predictions()
+    print("[INFO] Loading football data...")
+    df = load_football_data()
 
-    print(f"[INFO] Predictions loaded: {len(df)} rows")
+    upcoming = get_upcoming_matches(df)
 
-    print("[INFO] Building coupons...")
-    coupons = build_coupons(df)
+    if upcoming.empty:
+        print("[WARN] No upcoming matches")
+        return
 
-    print(f"[INFO] Coupons created: {len(coupons)}")
-    save_coupons(coupons)
+    print("[INFO] Predicting markets...")
+    predictions = predict_markets(upcoming)
 
-    print("[DONE] Agent finished successfully")
+    if predictions.empty:
+        print("[WARN] No predictions")
+        return
+
+    coupons = generate_coupons(predictions)
+    coupons = archive_finished_coupons(coupons)
+
+    with open(COUPONS_FILE, "w") as f:
+        json.dump(coupons, f, indent=2)
+
+    print(f"[INFO] Coupons saved: {len(coupons)}")
 
 
 if __name__ == "__main__":
