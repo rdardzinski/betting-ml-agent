@@ -1,24 +1,18 @@
-import os, joblib, time
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-
-def train_and_save(df, market, league):
-    ts = time.strftime("%Y%m%d_%H%M")
-    path = f"models/football/{league}/{market}"
-    os.makedirs(path, exist_ok=True)
-
-    target_map = {
-        "Over25": (df["FTHG"] + df["FTAG"] > 2).astype(int),
-        "BTTS": ((df["FTHG"]>0)&(df["FTAG"]>0)).astype(int)
-    }
-
-    if market not in target_map:
-        return
-
-    X = df.select_dtypes("number")
-    y = target_map[market]
-
-    model = RandomForestClassifier(n_estimators=200, random_state=42)
-    model.fit(X, y)
-
-    joblib.dump(model, f"{path}/{ts}.joblib")
+# predictor.py
+def predict(match):
+    """
+    match: pd.Series z kolumnami HomeTeam, AwayTeam, League, Date
+    zwraca listę słowników:
+        Market, Probability, ModelAccuracy, ValueFlag
+    """
+    markets = ['Over25', 'BTTS', '1HGoals', '2HGoals', 'Cards', 'Corners']
+    preds = []
+    for m in markets:
+        pred = {
+            'Market': m,
+            'Probability': 0.5,   # placeholder
+            'ModelAccuracy': 0.8, # placeholder
+            'ValueFlag': False     # placeholder
+        }
+        preds.append(pred)
+    return preds
