@@ -1,25 +1,37 @@
-name: Retrain Models
+name: Train Football Models
 
 on:
+  schedule:
+    # poniedziałek 04:00 UTC
+    - cron: "0 4 * * 1"
   workflow_dispatch:
 
 jobs:
   train:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - run: python notebooks/run_training.py
+      - name: Train models
+        run: |
+          python notebooks/run_training.py
 
-      - run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add models/*.pkl
-          git commit -m "Auto retrain models" || echo "No changes"
+      - name: Commit trained models
+        run: |
+          git config --global user.name "ml-bot"
+          git config --global user.email "ml-bot@github.com"
+          git add models/
+          git commit -m "🔁 Weekly model retraining" || echo "No changes"
           git push
