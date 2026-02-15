@@ -9,6 +9,15 @@ COUPONS_FILE = "coupons.json"
 MAX_BETS_PER_COUPON = 5
 MIN_PROB = 0.55
 
+MARKETS = [
+    "Over25",
+    "BTTS",
+    "1HGoals",
+    "2HGoals",
+    "Cards",
+    "Corners",
+]
+
 
 def load_predictions() -> pd.DataFrame:
     if not Path(PREDICTIONS_FILE).exists():
@@ -16,51 +25,64 @@ def load_predictions() -> pd.DataFrame:
 
     df = pd.read_csv(PREDICTIONS_FILE)
 
-    required_cols = [
-        "Date",
-        "HomeTeam",
-        "AwayTeam",
-        "League",
-        "Market",
-        "Probability",
-        "ModelAccuracy",
-    ]
+    base_cols = ["Date", "HomeTeam", "AwayTeam", "League"]
+    for c in base_cols:
+        if c not in df.columns:
+            df[c] = "Unknown"
 
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"Brak kolumn w predictions.csv: {missing}")
+    rows = []
 
-    return df
+    # 🔁 TRANSFORMACJA STAREGO FORMATU → DŁUGI FORMAT
+    for market in MARKETS:
+        prob_col = f"{market}_Prob"
+        acc_col = f"{market}_ModelAccuracy"
+
+        if prob_col not in df.columns or acc_col not in df.columns:
+            continue
+
+        tmp = df[base_cols + [prob_col, acc_col]].copy()
+        tmp.rename(
+            columns={
+                prob_col: "Probability",
+                acc_col: "ModelAccuracy",
+            },
+            inplace=True,
+        )
+        tmp["Market"] = market
+        rows.append(tmp)
+
+    if not rows:
+        raise ValueError("Brak rozpoznawalnych rynków w predictions.csv")
+
+    long_df = pd.concat(rows, ignore_index=True)
+
+    return long_df
 
 
 def build_coupons(df: pd.DataFrame) -> list:
-    # tylko wartościowe zakłady
     df = df[df["Probability"] >= MIN_PROB].copy()
 
-    # sortowanie: najwyższe prawdopodobieństwo + accuracy
     df["Score"] = df["Probability"] * df["ModelAccuracy"]
     df = df.sort_values("Score", ascending=False)
 
     coupons = []
     used_matches = set()
-
     current_coupon = []
 
     for _, row in df.iterrows():
         match_id = f"{row['Date']}|{row['HomeTeam']}|{row['AwayTeam']}"
 
-        # jeden rynek na mecz
         if match_id in used_matches:
             continue
 
         bet = {
             "Date": row["Date"],
-            "HomeTeam": row["HomeTeam"],
-            "AwayTeam": row["AwayTeam"],
+            "Match": f"{row['HomeTeam']} vs {row['AwayTeam']}",
             "League": row["League"],
             "Market": row["Market"],
             "Probability": round(row["Probability"], 3),
             "ModelAccuracy": round(row["ModelAccuracy"], 3),
+            "ValueFlag": row["Probability"] >= 0.55,
         }
 
         current_coupon.append(bet)
@@ -88,6 +110,8 @@ def save_coupons(coupons: list):
 def run():
     print("[INFO] Loading predictions...")
     df = load_predictions()
+
+    print(f"[INFO] Predictions loaded: {len(df)} rows")
 
     print("[INFO] Building coupons...")
     coupons = build_coupons(df)
