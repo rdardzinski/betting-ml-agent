@@ -1,79 +1,138 @@
 import pandas as pd
 from datetime import datetime, timedelta
+from pathlib import Path
 
-SUPPORTED_LEAGUES = {
-    # TOP
-    "ENG1": "England Premier League",
-    "ESP1": "Spain La Liga",
-    "ITA1": "Italy Serie A",
-    "GER1": "Germany Bundesliga",
-    "FRA1": "France Ligue 1",
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(exist_ok=True)
+FOOTBALL_CSV = DATA_DIR / "football_matches.csv"
 
-    # EUROPA
-    "POL1": "Poland Ekstraklasa",
-    "POL2": "Poland I Liga",
-    "CZE1": "Czech First League",
-    "ROU1": "Romania Liga 1",
-    "CRO1": "Croatia HNL",
-    "BUL1": "Bulgaria First League",
-    "DEN1": "Denmark Superliga",
-    "NOR1": "Norway Eliteserien",
-    "SWE1": "Sweden Allsvenskan",
-    "AUT1": "Austria Bundesliga",
-    "SUI1": "Switzerland Super League",
-    "BEL1": "Belgium Pro League",
-    "NED1": "Netherlands Eredivisie",
-    "POR1": "Portugal Primeira Liga",
-    "GRE1": "Greece Super League",
-    "TUR1": "Turkey Super Lig",
-    "SCO1": "Scotland Premiership",
-    "IRL1": "Ireland Premier Division",
-    "FIN1": "Finland Veikkausliiga",
-    "ISL1": "Iceland Urvalsdeild",
-    "SRB1": "Serbia SuperLiga",
-    "SVK1": "Slovakia Super Liga",
-    "HUN1": "Hungary NB I",
-    "UKR1": "Ukraine Premier League",
-    "CYP1": "Cyprus First Division",
+# =========================
+# WSZYSTKIE LIGI (30+)
+# =========================
+LEAGUES = {
+    # Polska
+    "PL1": "Poland Ekstraklasa",
+    "PL2": "Poland I Liga",
+    # Czechy
+    "CZ1": "Czech First League",
+    # Rumunia
+    "RO1": "Romania Liga 1",
+    # Chorwacja
+    "HR1": "Croatia HNL",
+    # Bułgaria
+    "BG1": "Bulgaria Parva Liga",
+    # Dania
+    "DK1": "Denmark Superliga",
+    # Norwegia
+    "NO1": "Norway Eliteserien",
+    # Szwecja
+    "SE1": "Sweden Allsvenskan",
+    # Top 5 lig europejskich
+    "ENG1": "English Premier League",
+    "ENG2": "English Championship",
+    "ESP1": "La Liga",
+    "ESP2": "La Liga 2",
+    "ITA1": "Serie A",
+    "ITA2": "Serie B",
+    "GER1": "Bundesliga",
+    "GER2": "2. Bundesliga",
+    "FRA1": "Ligue 1",
+    "FRA2": "Ligue 2",
+    # Inne popularne ligi europejskie
+    "NL1": "Netherlands Eredivisie",
+    "PT1": "Portugal Primeira Liga",
+    "BE1": "Belgium Pro League",
+    "AT1": "Austria Bundesliga",
+    "CH1": "Switzerland Super League",
+    "TR1": "Turkey Super Lig",
+    "GR1": "Greece Super League",
+    "RU1": "Russia Premier League",
+    "UA1": "Ukraine Premier League",
+    "RO2": "Romania Liga 2",
+    "DK2": "Denmark 1st Division",
+    "NO2": "Norway OBOS-ligaen",
+    "SE2": "Sweden Superettan",
+    "CZ2": "Czech National League",
+    "HR2": "Croatia 2. HNL",
 }
 
-REQUIRED_COLS = [
-    "Date", "HomeTeam", "AwayTeam", "League",
-    "Over25", "BTTS", "Corners", "Cards",
-    "Odds_Over25", "Odds_BTTS"
-]
+# =========================
+# FUNKCJA ŁADOWANIA DANYCH
+# =========================
+def load_football_data(months_back: int = 6, incremental: bool = True) -> pd.DataFrame:
+    """
+    Pobiera dane piłkarskie i zapisuje do CSV.
+    Args:
+        months_back: ile miesięcy danych wstecz pobrać
+        incremental: jeśli True, pobiera tylko nowe mecze
 
+    Returns:
+        pd.DataFrame z kolumnami:
+        Date, HomeTeam, AwayTeam, League, HomeGoals, AwayGoals
+    """
 
-def load_football_data(path="data/football_matches.csv", months_back=6):
-    df = pd.read_csv(path)
-    df.columns = [c.strip() for c in df.columns]
+    cutoff_date = datetime.utcnow() - timedelta(days=30 * months_back)
 
-    missing_cols = [c for c in REQUIRED_COLS if c not in df.columns]
-    for c in missing_cols:
-        df[c] = None
+    # Wczytanie istniejącego CSV jeśli istnieje
+    if FOOTBALL_CSV.exists() and incremental:
+        existing = pd.read_csv(FOOTBALL_CSV, parse_dates=["Date"])
+        last_date = existing["Date"].max()
+        fetch_from = max(last_date, cutoff_date)
+        print(f"[INFO] Incremental mode. Fetching matches from {fetch_from.date()}")
+    else:
+        existing = None
+        fetch_from = cutoff_date
+        print(f"[INFO] Full fetch mode. Fetching matches from {fetch_from.date()}")
 
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    cutoff = datetime.utcnow() - timedelta(days=30 * months_back)
-    df = df[df["Date"] >= cutoff]
+    all_rows = []
+    missing_leagues = {}
 
-    df["HomeTeam"] = df["HomeTeam"].fillna("Unknown")
-    df["AwayTeam"] = df["AwayTeam"].fillna("Unknown")
-    df["League"] = df["League"].fillna("Unknown")
+    for code, league_name in LEAGUES.items():
+        try:
+            # =========================
+            # PLACEHOLDER: podłącz swoje API / CSV / scraping
+            # =========================
+            # W tym przykładzie generujemy dummy dane
+            dummy = pd.DataFrame({
+                "Date": [datetime.utcnow()],
+                "HomeTeam": [f"{league_name} Team A"],
+                "AwayTeam": [f"{league_name} Team B"],
+                "HomeGoals": [1],
+                "AwayGoals": [0],
+                "League": [league_name],
+            })
 
-    # raport braków lig
-    present = set(df["League"].unique())
-    missing_leagues = {
-        code: name for code, name in SUPPORTED_LEAGUES.items()
-        if name not in present
-    }
+            # Filtr na datę przyrostową
+            dummy = dummy[dummy["Date"] >= fetch_from]
+            all_rows.append(dummy)
 
-    df = df.reset_index(drop=True)
+        except Exception as e:
+            print(f"[WARN] League {league_name} not loaded: {e}")
+            missing_leagues[league_name] = str(e)
 
-    return df, missing_leagues
+    if not all_rows:
+        raise RuntimeError("No football data fetched from any league")
 
+    new_data = pd.concat(all_rows, ignore_index=True)
 
-def upcoming_matches(df, days=10):
-    today = datetime.utcnow().date()
-    end = today + timedelta(days=days)
-    return df[(df["Date"].dt.date >= today) &
-              (df["Date"].dt.date <= end)].copy()
+    # Scalanie z istniejącym CSV jeśli istnieje
+    if existing is not None:
+        combined = pd.concat([existing, new_data], ignore_index=True)
+        combined = combined.drop_duplicates(
+            subset=["Date", "HomeTeam", "AwayTeam", "League"]
+        )
+    else:
+        combined = new_data
+
+    combined = combined.sort_values("Date")
+    combined.to_csv(FOOTBALL_CSV, index=False)
+
+    print(f"[INFO] Football matches saved: {len(combined)}")
+
+    # Raport brakujących lig
+    if missing_leagues:
+        print("\n[REPORT] Leagues not loaded:")
+        for league, reason in missing_leagues.items():
+            print(f" - {league}: {reason}")
+
+    return combined
