@@ -1,37 +1,38 @@
-name: Football ML Daily Pipeline
+name: Generate Betting Coupons
 
 on:
   schedule:
-    - cron: "0 3 * * *"
-    - cron: "0 5 * * 6"
+    # codziennie 06:00 UTC
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 jobs:
-  train:
+  generate:
     runs-on: ubuntu-latest
     permissions: write-all
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-    - name: Install deps
-      run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Train models
-      run: python notebooks/run_training.py
+      - name: Generate coupons
+        run: |
+          python agent.py
 
-    - name: Run agent
-      run: python agent.py
-
-    - name: Commit artifacts
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add models predictions.csv coupons.json
-        git commit -m "Auto retrain & predictions" || echo "No changes"
-        git push
+      - name: Commit coupons
+        run: |
+          git config --global user.name "coupon-bot"
+          git config --global user.email "coupon-bot@github.com"
+          git add coupons.json coupons_archive/
+          git commit -m "🎟️ Daily coupon generation" || echo "No changes"
+          git push
