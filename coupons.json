@@ -1,1 +1,237 @@
-[[591, 79, 467, 455, 460], [444, 1287, 379, 3210, 1884], [1095, 262, 331, 363, 170], [3075, 764, 42, 790, 340], [993, 1992, 3539, 1026, 509]]
+[
+  [
+    {
+      "Date": "2025-08-17",
+      "Match": "Brest vs Lille",
+      "League": "FR1",
+      "Market": "Corners",
+      "Probability": 0.99,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-10-18",
+      "Match": "Spezia vs Cesena",
+      "League": "IT2",
+      "Market": "Corners",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2026-02-01",
+      "Match": "Angers vs Metz",
+      "League": "FR1",
+      "Market": "Corners",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2026-02-01",
+      "Match": "Celtic vs Falkirk",
+      "League": "SC1",
+      "Market": "Corners",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-09-12",
+      "Match": "Avellino vs Monza",
+      "League": "IT2",
+      "Market": "Corners",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    }
+  ],
+  [
+    {
+      "Date": "2025-08-16",
+      "Match": "Alaves vs Levante",
+      "League": "ES1",
+      "Market": "Corners",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2026-01-10",
+      "Match": "AZ Alkmaar vs Volendam",
+      "League": "NL1",
+      "Market": "Corners",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-12-27",
+      "Match": "Catanzaro vs Cesena",
+      "League": "IT2",
+      "Market": "Corners",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-08-18",
+      "Match": "Elche vs Betis",
+      "League": "ES1",
+      "Market": "BTTS",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-10-18",
+      "Match": "Spezia vs Cesena",
+      "League": "IT2",
+      "Market": "BTTS",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    }
+  ],
+  [
+    {
+      "Date": "2025-08-24",
+      "Match": "Atalanta vs Pisa",
+      "League": "IT1",
+      "Market": "BTTS",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-08-08",
+      "Match": "Birmingham vs Ipswich",
+      "League": "ENG2",
+      "Market": "BTTS",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-08-15",
+      "Match": "Bastia vs Pau FC",
+      "League": "FR2",
+      "Market": "BTTS",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-12-29",
+      "Match": "Birmingham vs Southampton",
+      "League": "ENG2",
+      "Market": "BTTS",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2026-01-04",
+      "Match": "Alaves vs Oviedo",
+      "League": "ES1",
+      "Market": "Corners",
+      "Probability": 0.963,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    }
+  ],
+  [
+    {
+      "Date": "2026-01-31",
+      "Match": "Alverca vs Estrela",
+      "League": "PT1",
+      "Market": "Corners",
+      "Probability": 0.963,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-08-16",
+      "Match": "Blackburn vs Birmingham",
+      "League": "ENG2",
+      "Market": "Cards",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.514,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-11-26",
+      "Match": "Blackburn vs QPR",
+      "League": "ENG2",
+      "Market": "Cards",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.514,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-12-06",
+      "Match": "For Sittard vs Ajax",
+      "League": "NL1",
+      "Market": "Cards",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.514,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-08-24",
+      "Match": "Le Havre vs Lens",
+      "League": "FR1",
+      "Market": "Cards",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.514,
+      "ValueFlag": true
+    }
+  ],
+  [
+    {
+      "Date": "2026-01-17",
+      "Match": "Bari vs Juve Stabia",
+      "League": "IT2",
+      "Market": "Cards",
+      "Probability": 0.98,
+      "ModelAccuracy": 0.514,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-11-22",
+      "Match": "FC Koln vs Ein Frankfurt",
+      "League": "D1",
+      "Market": "Corners",
+      "Probability": 0.96,
+      "ModelAccuracy": 0.524,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2026-01-03",
+      "Match": "Amiens vs Nancy",
+      "League": "FR2",
+      "Market": "BTTS",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2025-12-21",
+      "Match": "Genoa vs Atalanta",
+      "League": "IT1",
+      "Market": "BTTS",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    },
+    {
+      "Date": "2026-01-17",
+      "Match": "Avellino vs Carrarese",
+      "League": "IT2",
+      "Market": "BTTS",
+      "Probability": 0.97,
+      "ModelAccuracy": 0.517,
+      "ValueFlag": true
+    }
+  ]
+]
