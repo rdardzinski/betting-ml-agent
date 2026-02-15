@@ -1,58 +1,79 @@
 import pandas as pd
+from datetime import datetime, timedelta
 
-# =========================
-# PIŁKA NOŻNA – 20+ LIG (FREE)
-# Źródło: football-data.co.uk
-# =========================
-FOOTBALL_LEAGUES = {
-    # ENGLAND
-    "ENG1": "https://www.football-data.co.uk/mmz4281/2526/E0.csv",
-    "ENG2": "https://www.football-data.co.uk/mmz4281/2526/E1.csv",
-    "ENG3": "https://www.football-data.co.uk/mmz4281/2526/E2.csv",
-    # GERMANY
-    "D1": "https://www.football-data.co.uk/mmz4281/2526/D1.csv",
-    "D2": "https://www.football-data.co.uk/mmz4281/2526/D2.csv",
-    # SPAIN
-    "ES1": "https://www.football-data.co.uk/mmz4281/2526/SP1.csv",
-    "ES2": "https://www.football-data.co.uk/mmz4281/2526/SP2.csv",
-    # ITALY
-    "IT1": "https://www.football-data.co.uk/mmz4281/2526/I1.csv",
-    "IT2": "https://www.football-data.co.uk/mmz4281/2526/I2.csv",
-    # FRANCE
-    "FR1": "https://www.football-data.co.uk/mmz4281/2526/F1.csv",
-    "FR2": "https://www.football-data.co.uk/mmz4281/2526/F2.csv",
-    # NETHERLANDS
-    "NL1": "https://www.football-data.co.uk/mmz4281/2526/N1.csv",
-    # PORTUGAL
-    "PT1": "https://www.football-data.co.uk/mmz4281/2526/P1.csv",
-    # BELGIUM
-    "BE1": "https://www.football-data.co.uk/mmz4281/2526/B1.csv",
-    # SCOTLAND
-    "SC1": "https://www.football-data.co.uk/mmz4281/2526/SC0.csv",
-    # TURKEY
-    "TR1": "https://www.football-data.co.uk/mmz4281/2526/T1.csv",
-    # GREECE
-    "GR1": "https://www.football-data.co.uk/mmz4281/2526/G1.csv",
+SUPPORTED_LEAGUES = {
+    # TOP
+    "ENG1": "England Premier League",
+    "ESP1": "Spain La Liga",
+    "ITA1": "Italy Serie A",
+    "GER1": "Germany Bundesliga",
+    "FRA1": "France Ligue 1",
+
+    # EUROPA
+    "POL1": "Poland Ekstraklasa",
+    "POL2": "Poland I Liga",
+    "CZE1": "Czech First League",
+    "ROU1": "Romania Liga 1",
+    "CRO1": "Croatia HNL",
+    "BUL1": "Bulgaria First League",
+    "DEN1": "Denmark Superliga",
+    "NOR1": "Norway Eliteserien",
+    "SWE1": "Sweden Allsvenskan",
+    "AUT1": "Austria Bundesliga",
+    "SUI1": "Switzerland Super League",
+    "BEL1": "Belgium Pro League",
+    "NED1": "Netherlands Eredivisie",
+    "POR1": "Portugal Primeira Liga",
+    "GRE1": "Greece Super League",
+    "TUR1": "Turkey Super Lig",
+    "SCO1": "Scotland Premiership",
+    "IRL1": "Ireland Premier Division",
+    "FIN1": "Finland Veikkausliiga",
+    "ISL1": "Iceland Urvalsdeild",
+    "SRB1": "Serbia SuperLiga",
+    "SVK1": "Slovakia Super Liga",
+    "HUN1": "Hungary NB I",
+    "UKR1": "Ukraine Premier League",
+    "CYP1": "Cyprus First Division",
 }
 
-def get_next_matches():
-    frames = []
-    for league, url in FOOTBALL_LEAGUES.items():
-        try:
-            df = pd.read_csv(url)
-            required_cols = ["Date","HomeTeam","AwayTeam","FTHG","FTAG"]
-            if not all(col in df.columns for col in required_cols):
-                continue
-            df = df[required_cols].copy()
-            df["League"] = league
-            frames.append(df)
-        except Exception as e:
-            print(f"[WARN] {league} not loaded: {e}")
+REQUIRED_COLS = [
+    "Date", "HomeTeam", "AwayTeam", "League",
+    "Over25", "BTTS", "Corners", "Cards",
+    "Odds_Over25", "Odds_BTTS"
+]
 
-    if not frames:
-        return pd.DataFrame()
 
-    data = pd.concat(frames, ignore_index=True)
-    data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
-    data = data.dropna(subset=["HomeTeam","AwayTeam"])
-    return data
+def load_football_data(path="data/football_matches.csv", months_back=6):
+    df = pd.read_csv(path)
+    df.columns = [c.strip() for c in df.columns]
+
+    missing_cols = [c for c in REQUIRED_COLS if c not in df.columns]
+    for c in missing_cols:
+        df[c] = None
+
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    cutoff = datetime.utcnow() - timedelta(days=30 * months_back)
+    df = df[df["Date"] >= cutoff]
+
+    df["HomeTeam"] = df["HomeTeam"].fillna("Unknown")
+    df["AwayTeam"] = df["AwayTeam"].fillna("Unknown")
+    df["League"] = df["League"].fillna("Unknown")
+
+    # raport braków lig
+    present = set(df["League"].unique())
+    missing_leagues = {
+        code: name for code, name in SUPPORTED_LEAGUES.items()
+        if name not in present
+    }
+
+    df = df.reset_index(drop=True)
+
+    return df, missing_leagues
+
+
+def upcoming_matches(df, days=10):
+    today = datetime.utcnow().date()
+    end = today + timedelta(days=days)
+    return df[(df["Date"].dt.date >= today) &
+              (df["Date"].dt.date <= end)].copy()
