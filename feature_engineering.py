@@ -1,25 +1,16 @@
+# feature_engineering.py
 import pandas as pd
-from elo import compute_elo
-
-FEATURES = [
-    "HomeGoalsAvg","AwayGoalsAvg",
-    "HomeConcededAvg","AwayConcededAvg",
-    "HomeElo","AwayElo",
-    "OddsHome","OddsDraw","OddsAway"
-]
 
 def build_features(df):
-    df = df.sort_values("Date")
-
-    for side in ["Home","Away"]:
-        df[f"{side}GoalsAvg"] = (
-            df.groupby(f"{side}Team")["FTHG" if side=="Home" else "FTAG"]
-            .transform(lambda x: x.rolling(5, min_periods=1).mean())
-        )
-        df[f"{side}ConcededAvg"] = (
-            df.groupby(f"{side}Team")["FTAG" if side=="Home" else "FTHG"]
-            .transform(lambda x: x.rolling(5, min_periods=1).mean())
-        )
-
-    df = compute_elo(df)
+    # placeholder – przygotowuje cechy dla modeli
+    df = df.copy()
+    df['HomeForm'] = 1.0  # przykładowa cecha
+    df['AwayForm'] = 1.0
+    df['HomeRollingConceded'] = 0
+    df['AwayRollingConceded'] = 0
+    df['ELO_Home'] = 1500
+    df['ELO_Away'] = 1500
+    df['Odds_Home'] = 1.5
+    df['Odds_Draw'] = 3.0
+    df['Odds_Away'] = 2.5
     return df
